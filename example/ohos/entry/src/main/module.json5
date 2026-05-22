@@ -1,0 +1,50 @@
+
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    "deviceTypes": [
+      "phone"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:icon",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:icon",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "action.system.home"
+            ]
+          }
+        ]
+      }
+    ],
+    "requestPermissions": [
+      {"name" :  "ohos.permission.INTERNET"}
+    ],
+    "metadata": [
+      {
+        "name": "com.aliyun.alivc_license.licensekey",
+        "value": "MoCTfuQ391Z01mNqG8f8786e23c8a457a8ff8d5faedc1040c"
+      },
+      {
+        "name": "com.aliyun.alivc_license.licensefile",
+        "value": "ohosLicense.crt"
+      }
+    ]
+  }
+}
