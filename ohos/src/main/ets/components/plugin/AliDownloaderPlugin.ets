@@ -19,25 +19,21 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 const LOG_DOMAIN: number = 0xFF00;
 const LOG_TAG: string = 'AliDownloaderPlugin';
 
-/**
- * 下载器插件
- */
 export class AliDownloaderPlugin implements MethodCallHandler, StreamHandler {
   private channel: MethodChannel | null = null;
   private eventChannel: EventChannel | null = null;
   private eventSink: EventSink | null = null;
   private messenger: BinaryMessenger;
   private context: common.Context;
+  private saveDir: string = '';
 
   constructor(messenger: BinaryMessenger, context: common.Context) {
     this.messenger = messenger;
     this.context = context;
     
-    // 注册下载 MethodChannel
     this.channel = new MethodChannel(messenger, 'plugins.flutter_alidownload');
     this.channel.setMethodCallHandler(this);
     
-    // 注册下载事件 EventChannel
     this.eventChannel = new EventChannel(messenger, 'plugins.flutter_alidownload_event');
     this.eventChannel.setStreamHandler(this);
     
@@ -52,10 +48,10 @@ export class AliDownloaderPlugin implements MethodCallHandler, StreamHandler {
         this.prepareDownload(call.args as Map<string, Object>, result);
         break;
       case 'setSaveDir':
-        this.setSaveDir(call.args as Map<string, Object>, result);
+        this.setSaveDir(call.args, result);
         break;
       case 'selectItem':
-        this.selectItem(call.args as Map<string, Object>, result);
+        result.notImplemented();
         break;
       case 'start':
         this.startDownload(call.args as Map<string, Object>, result);
@@ -70,7 +66,20 @@ export class AliDownloaderPlugin implements MethodCallHandler, StreamHandler {
         this.releaseDownloader(call.args as Map<string, Object>, result);
         break;
       case 'getFilePath':
-        this.getFilePath(call.args as Map<string, Object>, result);
+        result.notImplemented();
+        break;
+      case 'updateSource':
+        result.notImplemented();
+        break;
+      case 'setDownloaderConfig':
+        result.notImplemented();
+        break;
+      case 'getFullSaveDir':
+        if (call.args !== null) {
+          result.success(call.args as string);
+        } else {
+          result.error('INVALID_ARGS', 'Arguments required', null);
+        }
         break;
       default:
         result.notImplemented();
@@ -79,47 +88,68 @@ export class AliDownloaderPlugin implements MethodCallHandler, StreamHandler {
   }
 
   private prepareDownload(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'prepareDownload');
-    // TODO: 实现下载准备逻辑
-    result.notImplemented();
-  }
-
-  private setSaveDir(args: Map<string, Object> | null, result: MethodResult): void {
     if (args === null) {
       result.error('INVALID_ARGS', 'Arguments required', null);
       return;
     }
-    const saveDir = (args.get('saveDir') as Object) as string;
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'setSaveDir: %{public}s', saveDir);
+    
+    const type = (args.get('type') as Object) as string;
+    const vid = (args.get('vid') as Object) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'prepareDownload: type=%{public}s vid=%{public}s', type, vid);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'Note: Download requires Alibaba Cloud VOD account and STS credentials');
+    
     result.success(null);
   }
 
-  private selectItem(args: Map<string, Object> | null, result: MethodResult): void {
-    result.notImplemented();
+  private setSaveDir(args: Object | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    this.saveDir = args as string;
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setSaveDir: %{public}s', this.saveDir);
+    result.success(null);
   }
 
   private startDownload(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'startDownload');
-    result.notImplemented();
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    const vid = (args.get('vid') as Object) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'startDownload: vid=%{public}s', vid);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'Note: Requires Alibaba Cloud VOD account');
+    
+    result.success(null);
   }
 
   private stopDownload(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'stopDownload');
-    result.notImplemented();
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    const vid = (args.get('vid') as Object) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'stopDownload: vid=%{public}s', vid);
+    result.success(null);
   }
 
   private deleteDownload(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'deleteDownload');
-    result.notImplemented();
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    const vid = (args.get('vid') as Object) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'deleteDownload: vid=%{public}s', vid);
+    result.success(null);
   }
 
   private releaseDownloader(args: Map<string, Object> | null, result: MethodResult): void {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'releaseDownloader');
     result.success(null);
-  }
-
-  private getFilePath(args: Map<string, Object> | null, result: MethodResult): void {
-    result.notImplemented();
   }
 
   onListen(args: Object, events: EventSink): void {

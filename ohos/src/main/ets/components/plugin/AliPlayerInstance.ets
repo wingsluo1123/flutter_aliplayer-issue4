@@ -23,12 +23,14 @@ import {
   MediaInfo,
   TrackInfo,
   ScaleMode,
+  PlayerConfig,
 } from 'premierlibrary';
+import { IPlayerInstance } from './IPlayerInstance';
 
 const LOG_DOMAIN: number = 0xFF00;
 const LOG_TAG: string = 'AliPlayerInstance';
 
-export class AliPlayerInstance {
+export class AliPlayerInstance implements IPlayerInstance {
   private playerId: string;
   private context: common.Context | null = null;
   private player: AliPlayer | null = null;
@@ -239,6 +241,42 @@ export class AliPlayerInstance {
           ['width', width],
           ['height', height],
           ['path', savedPath]
+        ]);
+      }
+    });
+    
+    this.player.setOnSubtitleDisplayListener({
+      onSubtitleExtAdded: (trackIndex: number, url: string) => {
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'onSubtitleExtAdded: %{public}s trackIndex=%{public}d url=%{public}s', 
+          this.playerId, trackIndex, url);
+        this.sendEventWithArgs('onSubtitleExtAdded', [
+          ['trackIndex', trackIndex],
+          ['url', url]
+        ]);
+      },
+      onSubtitleShow: (trackIndex: number, subtitleID: number, subtitle: string) => {
+        hilog.debug(LOG_DOMAIN, LOG_TAG, 'onSubtitleShow: %{public}s trackIndex=%{public}d subtitleID=%{public}d', 
+          this.playerId, trackIndex, subtitleID);
+        this.sendEventWithArgs('onSubtitleShow', [
+          ['trackIndex', trackIndex],
+          ['subtitleID', subtitleID],
+          ['subtitle', subtitle]
+        ]);
+      },
+      onSubtitleHide: (trackIndex: number, subtitleID: number) => {
+        hilog.debug(LOG_DOMAIN, LOG_TAG, 'onSubtitleHide: %{public}s trackIndex=%{public}d subtitleID=%{public}d', 
+          this.playerId, trackIndex, subtitleID);
+        this.sendEventWithArgs('onSubtitleHide', [
+          ['trackIndex', trackIndex],
+          ['subtitleID', subtitleID]
+        ]);
+      },
+      onSubtitleHeader: (trackIndex: number, header: string) => {
+        hilog.debug(LOG_DOMAIN, LOG_TAG, 'onSubtitleHeader: %{public}s trackIndex=%{public}d', 
+          this.playerId, trackIndex);
+        this.sendEventWithArgs('onSubtitleHeader', [
+          ['trackIndex', trackIndex],
+          ['header', header]
         ]);
       }
     });
@@ -534,9 +572,21 @@ export class AliPlayerInstance {
       } catch (err) {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set mirror mode: %{public}s', (err as Error).message);
       }
+}
+  }
+
+  setBackgroundColor(color: number): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setBackgroundColor: %{public}s color=0x%{public}x', this.playerId, color);
+    
+    if (this.player !== null) {
+      try {
+        this.player.setVideoBackgroundColor(color);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set background color: %{public}s', (err as Error).message);
+      }
     }
   }
-  
+
   selectTrack(trackIndex: number): void {
     hilog.debug(LOG_DOMAIN, LOG_TAG, 'selectTrack: %{public}s trackIndex=%{public}d', this.playerId, trackIndex);
     
@@ -545,6 +595,30 @@ export class AliPlayerInstance {
         this.player.selectTrack(trackIndex);
       } catch (err) {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to select track: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setDefaultBandWidth(bandWidth: number): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setDefaultBandWidth: %{public}s bandWidth=%{public}d', this.playerId, bandWidth);
+    
+    if (this.player !== null) {
+      try {
+        this.player.setDefaultBandWidth(bandWidth);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set default bandwidth: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setDefaultResolution(resolution: number): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setDefaultResolution: %{public}s resolution=%{public}d', this.playerId, resolution);
+    
+    if (this.player !== null) {
+      try {
+        this.player.setDefaultResolution(resolution);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set default resolution: %{public}s', (err as Error).message);
       }
     }
   }
@@ -645,12 +719,283 @@ export class AliPlayerInstance {
     }
   }
   
+  addExtSubtitle(url: string): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'addExtSubtitle: %{public}s url=%{public}s', this.playerId, url);
+    
+    if (this.player !== null) {
+      try {
+        this.player.addExtSubtitle(url);
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'Ext subtitle added successfully');
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to add ext subtitle: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  selectExtSubtitle(trackIndex: number, enable: boolean): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'selectExtSubtitle: %{public}s trackIndex=%{public}d enable=%{public}d', 
+      this.playerId, trackIndex, enable ? 1 : 0);
+    
+    if (this.player !== null) {
+      try {
+        this.player.selectExtSubtitle(trackIndex, enable);
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'Ext subtitle selected successfully');
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to select ext subtitle: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  createThumbnailHelper(thumbnail: string): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'createThumbnailHelper: %{public}s thumbnail=%{public}s', this.playerId, thumbnail);
+    hilog.warn(LOG_DOMAIN, LOG_TAG, 'Thumbnail API not supported by OHOS SDK');
+    // SDK 不支持缩略图 API，发送失败回调
+    this.sendEvent('thumbnail_onPrepared_Fail');
+  }
+  
+  requestBitmapAtPosition(position: number): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'requestBitmapAtPosition: %{public}s position=%{public}d', this.playerId, position);
+    hilog.warn(LOG_DOMAIN, LOG_TAG, 'Thumbnail API not supported by OHOS SDK');
+    // SDK 不支持缩略图 API，发送失败回调
+    this.sendEvent('onThumbnailGetFail');
+  }
+  
   setOnURLSourceExpiredListener(enable: boolean): void {
     hilog.debug(LOG_DOMAIN, LOG_TAG, 'setOnURLSourceExpiredListener: %{public}s enable=%{public}d', this.playerId, enable ? 1 : 0);
   }
   
   setOnVidAuthExpiredListener(enable: boolean): void {
     hilog.debug(LOG_DOMAIN, LOG_TAG, 'setOnVidAuthExpiredListener: %{public}s enable=%{public}d', this.playerId, enable ? 1 : 0);
+  }
+  
+  reload(): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'reload: %{public}s', this.playerId);
+    
+    if (this.player !== null) {
+      try {
+        this.player.reload();
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'reload success: %{public}s', this.playerId);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to reload player: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setConfig(config: Map<string, Object>): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setConfig: %{public}s', this.playerId);
+    
+    if (this.player === null) {
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'Player not initialized for setConfig');
+      return;
+    }
+    
+    try {
+      const playerConfig = this.player.getConfig();
+      if (playerConfig !== undefined && playerConfig !== null) {
+        this.applyConfigToPlayerConfig(config, playerConfig);
+        this.player.setConfig(playerConfig);
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'setConfig success: %{public}s', this.playerId);
+      }
+    } catch (err) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set config: %{public}s', (err as Error).message);
+    }
+  }
+  
+  getConfig(): Map<string, Object> {
+    const config = new Map<string, Object>();
+    
+    if (this.player === null) {
+      return config;
+    }
+    
+    try {
+      const playerConfig = this.player.getConfig();
+      if (playerConfig !== undefined && playerConfig !== null) {
+        config.set('mMaxBufferDuration', playerConfig.mMaxBufferDuration);
+        config.set('mHighBufferDuration', playerConfig.mHighBufferDuration);
+        config.set('mStartBufferDuration', playerConfig.mStartBufferDuration);
+        config.set('mNetworkTimeout', playerConfig.mNetworkTimeout);
+        config.set('mNetworkRetryCount', playerConfig.mNetworkRetryCount);
+        config.set('mHttpProxy', playerConfig.mHttpProxy);
+        config.set('mReferrer', playerConfig.mReferrer);
+        config.set('mUserAgent', playerConfig.mUserAgent);
+        config.set('mMaxDelayTime', playerConfig.mMaxDelayTime);
+        config.set('mMaxProbeSize', playerConfig.mMaxProbeSize);
+        config.set('mClearFrameWhenStop', playerConfig.mClearFrameWhenStop);
+        config.set('mEnableSEI', playerConfig.mEnableSEI);
+        config.set('mEnableLocalCache', playerConfig.mEnableLocalCache);
+        config.set('mDisableAudio', playerConfig.mDisableAudio);
+        config.set('mDisableVideo', playerConfig.mDisableVideo);
+        config.set('mLiveStartIndex', playerConfig.mLiveStartIndex);
+        config.set('mPositionTimerIntervalMs', playerConfig.mPositionTimerIntervalMs);
+        config.set('mMaxBackwardBufferDurationMs', playerConfig.mMaxBackwardBufferDurationMs);
+        config.set('mPreferAudio', playerConfig.mPreferAudio);
+        config.set('mEnableHttpDns', playerConfig.mEnableHttpDns);
+        config.set('mEnableHttp3', playerConfig.mEnableHttp3);
+        config.set('mEnableStrictFlvHeader', playerConfig.mEnableStrictFlvHeader);
+        config.set('mEnableStrictAuthMode', playerConfig.mEnableStrictAuthMode);
+        config.set('mEnableProjection', playerConfig.mEnableProjection);
+        config.set('mSelectTrackBufferMode', playerConfig.mSelectTrackBufferMode);
+        config.set('mMaxAllowedAbrVideoPixelNumber', playerConfig.mMaxAllowedAbrVideoPixelNumber);
+      }
+    } catch (err) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to get config: %{public}s', (err as Error).message);
+    }
+    
+    return config;
+  }
+  
+  private applyConfigToPlayerConfig(map: Map<string, Object>, config: PlayerConfig): void {
+    if (map.has('mMaxBufferDuration')) {
+      config.mMaxBufferDuration = map.get('mMaxBufferDuration') as number;
+    }
+    if (map.has('maxBufferDuration')) {
+      config.mMaxBufferDuration = map.get('maxBufferDuration') as number;
+    }
+    if (map.has('mHighBufferDuration')) {
+      config.mHighBufferDuration = map.get('mHighBufferDuration') as number;
+    }
+    if (map.has('highBufferDuration')) {
+      config.mHighBufferDuration = map.get('highBufferDuration') as number;
+    }
+    if (map.has('mStartBufferDuration')) {
+      config.mStartBufferDuration = map.get('mStartBufferDuration') as number;
+    }
+    if (map.has('startBufferDuration')) {
+      config.mStartBufferDuration = map.get('startBufferDuration') as number;
+    }
+    if (map.has('mNetworkTimeout')) {
+      config.mNetworkTimeout = map.get('mNetworkTimeout') as number;
+    }
+    if (map.has('networkTimeout')) {
+      config.mNetworkTimeout = map.get('networkTimeout') as number;
+    }
+    if (map.has('mNetworkRetryCount')) {
+      config.mNetworkRetryCount = map.get('mNetworkRetryCount') as number;
+    }
+    if (map.has('networkRetryCount')) {
+      config.mNetworkRetryCount = map.get('networkRetryCount') as number;
+    }
+    if (map.has('mHttpProxy')) {
+      config.mHttpProxy = map.get('mHttpProxy') as string;
+    }
+    if (map.has('httpProxy')) {
+      config.mHttpProxy = map.get('httpProxy') as string;
+    }
+    if (map.has('mReferrer')) {
+      config.mReferrer = map.get('mReferrer') as string;
+    }
+    if (map.has('referer')) {
+      config.mReferrer = map.get('referer') as string;
+    }
+    if (map.has('mUserAgent')) {
+      config.mUserAgent = map.get('mUserAgent') as string;
+    }
+    if (map.has('userAgent')) {
+      config.mUserAgent = map.get('userAgent') as string;
+    }
+    if (map.has('mMaxDelayTime')) {
+      config.mMaxDelayTime = map.get('mMaxDelayTime') as number;
+    }
+    if (map.has('maxDelayTime')) {
+      config.mMaxDelayTime = map.get('maxDelayTime') as number;
+    }
+    if (map.has('mMaxProbeSize')) {
+      config.mMaxProbeSize = map.get('mMaxProbeSize') as number;
+    }
+    if (map.has('maxProbeSize')) {
+      config.mMaxProbeSize = map.get('maxProbeSize') as number;
+    }
+    if (map.has('mClearFrameWhenStop')) {
+      config.mClearFrameWhenStop = map.get('mClearFrameWhenStop') as boolean;
+    }
+    if (map.has('clearShowWhenStop')) {
+      config.mClearFrameWhenStop = map.get('clearShowWhenStop') as boolean;
+    }
+    if (map.has('mEnableSEI')) {
+      config.mEnableSEI = map.get('mEnableSEI') as boolean;
+    }
+    if (map.has('enableSEI')) {
+      config.mEnableSEI = map.get('enableSEI') as boolean;
+    }
+    if (map.has('mEnableLocalCache')) {
+      config.mEnableLocalCache = map.get('mEnableLocalCache') as boolean;
+    }
+    if (map.has('enableLocalCache')) {
+      config.mEnableLocalCache = map.get('enableLocalCache') as boolean;
+    }
+    if (map.has('mDisableAudio')) {
+      config.mDisableAudio = map.get('mDisableAudio') as boolean;
+    }
+    if (map.has('disableAudio')) {
+      config.mDisableAudio = map.get('disableAudio') as boolean;
+    }
+    if (map.has('mDisableVideo')) {
+      config.mDisableVideo = map.get('mDisableVideo') as boolean;
+    }
+    if (map.has('disableVideo')) {
+      config.mDisableVideo = map.get('disableVideo') as boolean;
+    }
+    if (map.has('mLiveStartIndex')) {
+      config.mLiveStartIndex = map.get('mLiveStartIndex') as number;
+    }
+    if (map.has('liveStartIndex')) {
+      config.mLiveStartIndex = map.get('liveStartIndex') as number;
+    }
+    if (map.has('mPositionTimerIntervalMs')) {
+      config.mPositionTimerIntervalMs = map.get('mPositionTimerIntervalMs') as number;
+    }
+    if (map.has('positionTimerIntervalMs')) {
+      config.mPositionTimerIntervalMs = map.get('positionTimerIntervalMs') as number;
+    }
+    if (map.has('mMaxBackwardBufferDurationMs')) {
+      config.mMaxBackwardBufferDurationMs = map.get('mMaxBackwardBufferDurationMs') as number;
+    }
+    if (map.has('mMAXBackwardDuration')) {
+      config.mMaxBackwardBufferDurationMs = map.get('mMAXBackwardDuration') as number;
+    }
+    if (map.has('mPreferAudio')) {
+      config.mPreferAudio = map.get('mPreferAudio') as boolean;
+    }
+    if (map.has('preferAudio')) {
+      config.mPreferAudio = map.get('preferAudio') as boolean;
+    }
+    if (map.has('mEnableHttpDns')) {
+      config.mEnableHttpDns = map.get('mEnableHttpDns') as number;
+    }
+    if (map.has('enableHttpDns')) {
+      config.mEnableHttpDns = map.get('enableHttpDns') as number;
+    }
+    if (map.has('mEnableHttp3')) {
+      config.mEnableHttp3 = map.get('mEnableHttp3') as boolean;
+    }
+    if (map.has('enableHttp3')) {
+      config.mEnableHttp3 = map.get('enableHttp3') as boolean;
+    }
+    if (map.has('mEnableStrictFlvHeader')) {
+      config.mEnableStrictFlvHeader = map.get('mEnableStrictFlvHeader') as boolean;
+    }
+    if (map.has('enableStrictFlvHeader')) {
+      config.mEnableStrictFlvHeader = map.get('enableStrictFlvHeader') as boolean;
+    }
+    if (map.has('mEnableStrictAuthMode')) {
+      config.mEnableStrictAuthMode = map.get('mEnableStrictAuthMode') as boolean;
+    }
+    if (map.has('enableStrictAuthMode')) {
+      config.mEnableStrictAuthMode = map.get('enableStrictAuthMode') as boolean;
+    }
+    if (map.has('mEnableProjection')) {
+      config.mEnableProjection = map.get('mEnableProjection') as boolean;
+    }
+    if (map.has('enableProjection')) {
+      config.mEnableProjection = map.get('enableProjection') as boolean;
+    }
+    if (map.has('mSelectTrackBufferMode')) {
+      config.mSelectTrackBufferMode = map.get('mSelectTrackBufferMode') as number;
+    }
+    if (map.has('mMaxAllowedAbrVideoPixelNumber')) {
+      config.mMaxAllowedAbrVideoPixelNumber = map.get('mMaxAllowedAbrVideoPixelNumber') as number;
+    }
   }
   
   release(): void {
