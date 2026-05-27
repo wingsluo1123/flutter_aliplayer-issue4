@@ -1,7 +1,7 @@
 /**
  * 播放器实例管理器
  * 
- * 贌责创建、管理、销毁多个播放器实例（单播放器、列表播放器、直播时移播放器）
+ * 负责创建、管理、销毁多个播放器实例（单播放器、列表播放器、直播时移播放器）
  */
 
 import {
@@ -15,32 +15,28 @@ import common from '@ohos.app.ability.common';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { AliPlayerInstance } from './AliPlayerInstance';
+import { AliListPlayerInstance } from './AliListPlayerInstance';
+import { AliLiveShiftPlayerInstance } from './AliLiveShiftPlayerInstance';
+import { IPlayerInstance } from './IPlayerInstance';
 
 import { SurfaceCallback } from './AliPlayerPlatformView';
 
 const LOG_DOMAIN: number = 0xFF00;
 const LOG_TAG: string = 'AliPlayerInstanceManager';
 
-/**
- * 播放器实例管理器 - 实现 SurfaceCallback 接口
- */
+type PlayerInstance = AliPlayerInstance | AliListPlayerInstance | AliLiveShiftPlayerInstance;
+
+interface PlayerInfo {
+  instance: PlayerInstance;
+  type: string;
+}
+
 export class AliPlayerInstanceManager implements SurfaceCallback {
-  // BinaryMessenger（用于创建实例级 Channel）
   private messenger: BinaryMessenger;
-  
-  // ApplicationContext
   private context: common.Context;
-  
-  // 播放器实例映射表（playerId -> AliPlayerInstance）
-  private playerInstances: Map<string, AliPlayerInstance> = new Map();
-  
-  // PlatformView 绑定映射表（viewId -> playerId）
+  private playerInstances: Map<string, PlayerInfo> = new Map();
   private viewBinding: Map<number, string> = new Map();
-  
-  // 缓存的 surfaceId（viewId -> surfaceId），用于处理 surface 先于 player 创建的情况
   private cachedSurfaceIds: Map<number, string> = new Map();
-  
-  // EventSink（播放事件流）
   private eventSink: EventSink | null = null;
 
   constructor(messenger: BinaryMessenger, context: common.Context) {
@@ -49,9 +45,6 @@ export class AliPlayerInstanceManager implements SurfaceCallback {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'AliPlayerInstanceManager created');
   }
 
-  /**
-    * SurfaceCallback 实现 - surface 创建
-    */
   onSurfaceReady(viewId: number, surfaceId: string): void {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'onSurfaceReady: viewId=%{public}d surfaceId=%{public}s', viewId, surfaceId);
     
@@ -63,9 +56,9 @@ export class AliPlayerInstanceManager implements SurfaceCallback {
       return;
     }
     
-    const instance = this.playerInstances.get(playerId);
-    if (instance !== undefined) {
-      instance.setSurfaceId(surfaceId);
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo !== undefined) {
+      playerInfo.instance.setSurfaceId(surfaceId);
     }
   }
 
@@ -79,89 +72,117 @@ export class AliPlayerInstanceManager implements SurfaceCallback {
       return;
     }
     
-    const instance = this.playerInstances.get(playerId);
-    if (instance !== undefined) {
-      instance.clearSurfaceId();
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo !== undefined) {
+      playerInfo.instance.clearSurfaceId();
     }
   }
 
-  /**
-   * 设置 EventSink
-   */
   setEventSink(sink: EventSink | null): void {
     this.eventSink = sink;
     hilog.info(LOG_DOMAIN, LOG_TAG, 'EventSink set: %{public}s', sink !== null ? 'valid' : 'null');
     
     if (sink !== null) {
-      this.playerInstances.forEach((instance: AliPlayerInstance, playerId: string) => {
-        instance.setEventSink(sink);
+      this.playerInstances.forEach((playerInfo: PlayerInfo, playerId: string) => {
+        playerInfo.instance.setEventSink(sink);
         hilog.info(LOG_DOMAIN, LOG_TAG, 'EventSink set for player: %{public}s', playerId);
       });
     }
   }
 
-  /**
-   * 创建播放器实例
-   */
   createPlayer(playerId: string, type: string): void {
-    console.info('[AliPlayerInstanceManager] createPlayer START playerId=' + playerId + ' type=' + type);
     hilog.info(LOG_DOMAIN, LOG_TAG, 'createPlayer playerId=%{public}s type=%{public}s', playerId, type);
     
     if (this.playerInstances.has(playerId)) {
-      console.warn('[AliPlayerInstanceManager] Player already exists: ' + playerId);
       hilog.warn(LOG_DOMAIN, LOG_TAG, 'Player already exists: %{public}s', playerId);
       return;
     }
     
-    if (this.context === null) {
-      console.error('[AliPlayerInstanceManager] context is null!');
-      hilog.error(LOG_DOMAIN, LOG_TAG, 'context is null');
-      return;
+    let instance: PlayerInstance;
+    
+    if (type === 'list') {
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'Creating list player: %{public}s', playerId);
+      instance = new AliListPlayerInstance(playerId);
+    } else if (type === 'liveShift') {
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'Creating live shift player: %{public}s', playerId);
+      instance = new AliLiveShiftPlayerInstance(playerId);
+    } else {
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'Creating single player: %{public}s', playerId);
+      instance = new AliPlayerInstance(playerId);
     }
     
-    console.info('[AliPlayerInstanceManager] Creating AliPlayerInstance...');
-    const instance = new AliPlayerInstance(playerId);
-    console.info('[AliPlayerInstanceManager] Setting context...');
     instance.setContext(this.context);
     
     if (this.eventSink !== null) {
-      console.info('[AliPlayerInstanceManager] Setting eventSink...');
       instance.setEventSink(this.eventSink);
     }
     
-    console.info('[AliPlayerInstanceManager] Adding to playerInstances map...');
-    this.playerInstances.set(playerId, instance);
-    
-    console.info('[AliPlayerInstanceManager] Calling init()...');
+    this.playerInstances.set(playerId, { instance: instance, type: type });
     instance.init();
-    console.info('[AliPlayerInstanceManager] init() completed');
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'Player created: %{public}s', playerId);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'Player created: %{public}s type=%{public}s', playerId, type);
   }
 
-  /**
-   * 获取播放器实例
-   */
   getPlayer(playerId: string): AliPlayerInstance | null {
-    if (!this.playerInstances.has(playerId)) {
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo === undefined) {
       hilog.warn(LOG_DOMAIN, LOG_TAG, 'Player not found: %{public}s', playerId);
       return null;
     }
-    const instance = this.playerInstances.get(playerId);
-    return instance !== undefined ? instance : null;
+    if (playerInfo.type === 'single' || playerInfo.type === '') {
+      return playerInfo.instance as AliPlayerInstance;
+    }
+    return null;
   }
 
-  /**
-   * 销毁播放器实例
-   */
+  getListPlayer(playerId: string): AliListPlayerInstance | null {
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo === undefined) {
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'List player not found: %{public}s', playerId);
+      return null;
+    }
+    if (playerInfo.type === 'list') {
+      return playerInfo.instance as AliListPlayerInstance;
+    }
+    return null;
+  }
+
+  getLiveShiftPlayer(playerId: string): AliLiveShiftPlayerInstance | null {
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo === undefined) {
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'Live shift player not found: %{public}s', playerId);
+      return null;
+    }
+    if (playerInfo.type === 'liveShift') {
+      return playerInfo.instance as AliLiveShiftPlayerInstance;
+    }
+    return null;
+  }
+
+  getPlayerInstance(playerId: string): IPlayerInstance | null {
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo === undefined) {
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'Player instance not found: %{public}s', playerId);
+      return null;
+    }
+    return playerInfo.instance as IPlayerInstance;
+  }
+
+  getPlayerType(playerId: string): string {
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo === undefined) {
+      return '';
+    }
+    return playerInfo.type;
+  }
+
   destroyPlayer(playerId: string): void {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'destroyPlayer playerId=%{public}s', playerId);
     
-    const instance = this.playerInstances.get(playerId);
-    if (instance !== undefined) {
-      instance.release();
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo !== undefined) {
+      playerInfo.instance.release();
       this.playerInstances.delete(playerId);
       
-      // 清理视图绑定
       const viewBindingEntries = Array.from(this.viewBinding.entries());
       for (const entry of viewBindingEntries) {
         const viewId = entry[0];
@@ -175,62 +196,45 @@ export class AliPlayerInstanceManager implements SurfaceCallback {
     }
   }
 
-  /**
-   * 绑定 PlatformView 到播放器
-   */
   bindPlayerView(playerId: string, viewId: number): void {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'bindPlayerView playerId=%{public}s viewId=%{public}d', playerId, viewId);
     
-    const instance = this.playerInstances.get(playerId);
-    if (instance !== undefined) {
+    const playerInfo = this.playerInstances.get(playerId);
+    if (playerInfo !== undefined) {
       this.viewBinding.set(viewId, playerId);
-      instance.setViewId(viewId);
       
       const cachedSurfaceId = this.cachedSurfaceIds.get(viewId);
       if (cachedSurfaceId !== undefined) {
         hilog.info(LOG_DOMAIN, LOG_TAG, 'Applying cached surfaceId: %{public}s', cachedSurfaceId);
-        instance.setSurfaceId(cachedSurfaceId);
+        playerInfo.instance.setSurfaceId(cachedSurfaceId);
       }
     } else {
       hilog.warn(LOG_DOMAIN, LOG_TAG, 'Player not found for binding: %{public}s', playerId);
     }
   }
 
-  /**
-   * 解绑 PlatformView
-   */
   unbindPlayerView(viewId: number): void {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'unbindPlayerView viewId=%{public}d', viewId);
     
     const playerId = this.viewBinding.get(viewId);
     if (playerId !== undefined) {
-      const instance = this.playerInstances.get(playerId);
-      if (instance !== undefined) {
-        instance.clearViewId();
-      }
       this.viewBinding.delete(viewId);
     }
   }
 
-  /**
-   * 获取绑定到 View 的播放器 ID
-   */
   getPlayerIdByViewId(viewId: number): string | null {
     const playerId = this.viewBinding.get(viewId);
     return playerId !== undefined ? playerId : null;
   }
 
-  /**
-   * 释放所有播放器实例
-   */
   releaseAll(): void {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'releaseAll');
     
     const playerEntries = Array.from(this.playerInstances.entries());
     for (const entry of playerEntries) {
       const playerId = entry[0];
-      const instance = entry[1];
-      instance.release();
+      const playerInfo = entry[1];
+      playerInfo.instance.release();
       hilog.debug(LOG_DOMAIN, LOG_TAG, 'Released player: %{public}s', playerId);
     }
     
@@ -239,9 +243,18 @@ export class AliPlayerInstanceManager implements SurfaceCallback {
     this.eventSink = null;
   }
 
-  /**
-   * 发送播放事件到 Flutter
-   */
+  reloadAll(): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'reloadAll');
+    
+    const playerEntries = Array.from(this.playerInstances.entries());
+    for (const entry of playerEntries) {
+      const playerId = entry[0];
+      const playerInfo = entry[1];
+      playerInfo.instance.reload();
+      hilog.debug(LOG_DOMAIN, LOG_TAG, 'Reloaded player: %{public}s', playerId);
+    }
+  }
+
   sendEvent(eventData: Map<string, Object>): void {
     if (this.eventSink !== null) {
       this.eventSink.success(eventData);

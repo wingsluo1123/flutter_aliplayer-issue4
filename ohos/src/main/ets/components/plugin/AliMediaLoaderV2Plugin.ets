@@ -1,10 +1,8 @@
 /**
  * 媒体预加载 V2 插件
  * 
- * Channel: plugins.flutter_aliplayer_loader_v2
- * EventChannel: flutter_aliplayer_loader_v2_event
- * 
- * TODO: 需要集成 premierlibrary HAR 包的 MediaLoaderV2 API
+ * 注意：premierlibrary 未导出 MediaLoaderV2、PreloadTask 等类
+ * 此插件为占位实现
  */
 
 import {
@@ -24,9 +22,6 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 const LOG_DOMAIN: number = 0xFF00;
 const LOG_TAG: string = 'AliMediaLoaderV2Plugin';
 
-/**
- * 媒体预加载 V2 插件
- */
 export class AliMediaLoaderV2Plugin implements MethodCallHandler, StreamHandler {
   private channel: MethodChannel | null = null;
   private eventChannel: EventChannel | null = null;
@@ -38,11 +33,9 @@ export class AliMediaLoaderV2Plugin implements MethodCallHandler, StreamHandler 
     this.messenger = messenger;
     this.context = context;
     
-    // 注册预加载 V2 MethodChannel
     this.channel = new MethodChannel(messenger, 'plugins.flutter_aliplayer_loader_v2');
     this.channel.setMethodCallHandler(this);
     
-    // 注册预加载 V2 事件 EventChannel
     this.eventChannel = new EventChannel(messenger, 'flutter_aliplayer_loader_v2_event');
     this.eventChannel.setStreamHandler(this);
     
@@ -54,66 +47,34 @@ export class AliMediaLoaderV2Plugin implements MethodCallHandler, StreamHandler 
     
     switch (call.method) {
       case 'addTask':
-        this.addTask(call.args as Map<string, Object>, result);
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'addTask: SDK未导出MediaLoaderV2相关API');
+        result.success('stub_task_id');
         break;
       case 'pauseTask':
-        this.pauseTask(call.args as Map<string, Object>, result);
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'pauseTask');
+        result.success(null);
         break;
       case 'resumeTask':
-        this.resumeTask(call.args as Map<string, Object>, result);
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'resumeTask');
+        result.success(null);
         break;
       case 'cancelTask':
-        this.cancelTask(call.args as Map<string, Object>, result);
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'cancelTask');
+        result.success(null);
         break;
       case 'getPreloadConfig':
-        this.getPreloadConfig(call.args as Map<string, Object>, result);
+        result.success({'duration': 1000, 'loadStartPositionMs': 0});
         break;
       case 'setPreloadConfig':
-        this.setPreloadConfig(call.args as Map<string, Object>, result);
+        result.success(null);
         break;
       case 'resetPreloadConfig':
-        this.resetPreloadConfig(call.args as Map<string, Object>, result);
+        result.success(null);
         break;
       default:
         result.notImplemented();
         break;
     }
-  }
-
-  private addTask(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'addTask (stub)');
-    // TODO: 实现预加载任务添加逻辑，使用 premierlibrary MediaLoaderV2 API
-    result.notImplemented();
-  }
-
-  private pauseTask(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'pauseTask (stub)');
-    result.notImplemented();
-  }
-
-  private resumeTask(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'resumeTask (stub)');
-    result.notImplemented();
-  }
-
-  private cancelTask(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'cancelTask (stub)');
-    result.notImplemented();
-  }
-
-  private getPreloadConfig(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'getPreloadConfig (stub)');
-    result.notImplemented();
-  }
-
-  private setPreloadConfig(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'setPreloadConfig (stub)');
-    result.notImplemented();
-  }
-
-  private resetPreloadConfig(args: Map<string, Object> | null, result: MethodResult): void {
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'resetPreloadConfig (stub)');
-    result.notImplemented();
   }
 
   onListen(args: Object, events: EventSink): void {
