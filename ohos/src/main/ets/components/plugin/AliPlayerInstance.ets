@@ -877,10 +877,12 @@ export class AliPlayerInstance implements IPlayerInstance {
       config.mNetworkRetryCount = map.get('networkRetryCount') as number;
     }
     if (map.has('mHttpProxy')) {
-      config.mHttpProxy = map.get('mHttpProxy') as string;
+      const proxy = map.get('mHttpProxy') as string;
+      config.mHttpProxy = proxy !== null && proxy !== undefined ? proxy : '';
     }
     if (map.has('httpProxy')) {
-      config.mHttpProxy = map.get('httpProxy') as string;
+      const proxy = map.get('httpProxy') as string;
+      config.mHttpProxy = proxy !== null && proxy !== undefined ? proxy : '';
     }
     if (map.has('mReferrer')) {
       config.mReferrer = map.get('mReferrer') as string;
