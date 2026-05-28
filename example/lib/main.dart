@@ -375,12 +375,15 @@ class _SinglePlayerTabState extends _BasePlayerTabState<SinglePlayerTab> {
     config.startBufferDuration = _startBufferDuration;
     config.networkTimeout = _networkTimeout;
     config.networkRetryCount = _networkRetryCount;
-    if (_httpProxy.isNotEmpty) {
-      config.httpProxy = _httpProxy;
-    }
+    // 始终设置 httpProxy，空字符串表示清除代理
+    config.httpProxy = _httpProxy;
 
     _player!.setPlayConfig(config);
-    _addLog('应用播放器配置: 缓冲${_maxBufferDuration}ms 超时${_networkTimeout}ms 重试${_networkRetryCount}次');
+    if (_httpProxy.isNotEmpty) {
+      _addLog('应用播放器配置: 缓冲${_maxBufferDuration}ms 超时${_networkTimeout}ms 重试${_networkRetryCount}次 代理=${_httpProxy}');
+    } else {
+      _addLog('应用播放器配置: 缓冲${_maxBufferDuration}ms 超时${_networkTimeout}ms 重试${_networkRetryCount}次 代理=已清除');
+    }
   }
 
   void _setupEventListeners() {

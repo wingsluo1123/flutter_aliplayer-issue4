@@ -1,0 +1,775 @@
+{
+  "$schema": "https://raw.githubusercontent.com/HarmonyOS-AI/json-schema/main/droidrun/test_suite.schema.json",
+  "suite": {
+    "id": "flutter_aliplayer_test_suite",
+    "name": "flutter_aliplayer 测试套件",
+    "app_package": "com.aliyun.player.demo_ohos",
+    "app_card": "file:./flutter_aliplayer.md"
+  },
+  "modules": [
+    {
+      "moduleCode": "F-01",
+      "moduleName": "播放器创建与管理",
+      "moduleDescription": "创建单播放器、列表播放器、直播时移播放器，并支持销毁与释放。",
+      "priority": "P0",
+      "test_cases": [
+        {
+          "id": "F01-001",
+          "title": "单播放器创建后可完成视图绑定",
+          "level": "L0",
+          "preconditions": "应用已启动并停留在阿里云播放器 Demo 首页。",
+          "test_steps": [
+            {
+              "action": "点击【单播放器】页签，点击【创建单播放器】按钮 (API: createAliPlayer)",
+              "checkpoint": "验证视频区域保持可用，日志区域出现播放器创建成功记录。"
+            },
+            {
+              "action": "在【播放地址】输入框中保留默认地址，点击【播放】按钮 (API: setUrl, prepare)",
+              "checkpoint": "验证视频区域开始加载，进度条和播放控制区域变为可操作状态。"
+            },
+            {
+              "action": "等待视频首帧出现",
+              "checkpoint": "验证视频画面正常显示，日志出现播放器视图绑定成功或首帧渲染记录。"
+            }
+          ],
+          "expected_result": "单播放器实例可成功创建并与渲染视图绑定，后续播放控制可继续执行。",
+          "postconditions": ""
+        },
+        {
+          "id": "F01-002",
+          "title": "列表播放器创建后可进入可操作状态",
+          "level": "L0",
+          "preconditions": "应用已启动并停留在阿里云播放器 Demo 首页。",
+          "test_steps": [
+            {
+              "action": "点击【列表播放器】页签，点击【创建列表播放器】按钮 (API: createAliListPlayer)",
+              "checkpoint": "验证页面出现创建成功提示，列表播放控制区域可见。"
+            },
+            {
+              "action": "点击【加载默认列表】按钮",
+              "checkpoint": "验证【播放列表】区域出现至少 1 条资源记录。"
+            },
+            {
+              "action": "点击任意一条播放列表记录",
+              "checkpoint": "验证该记录高亮显示，当前资源进入可播放状态。"
+            }
+          ],
+          "expected_result": "列表播放器可创建完成，并能够接管播放列表中的资源。",
+          "postconditions": ""
+        },
+        {
+          "id": "F01-003",
+          "title": "直播时移播放器销毁后可回到初始状态",
+          "level": "L0",
+          "preconditions": "应用已启动并停留在阿里云播放器 Demo 首页。",
+          "test_steps": [
+            {
+              "action": "点击【直播时移】页签，点击【创建时移播放器】按钮 (API: createAliLiveShiftPlayer)",
+              "checkpoint": "验证日志区域出现直播时移播放器创建成功记录。"
+            },
+            {
+              "action": "点击【销毁释放】按钮 (API: release)",
+              "checkpoint": "验证播放信息区域中的直播时间、播放位置和时移范围恢复为空或默认值。"
+            },
+            {
+              "action": "观察【创建时移播放器】按钮状态",
+              "checkpoint": "验证【创建时移播放器】按钮重新可点击。"
+            }
+          ],
+          "expected_result": "直播时移播放器的创建与销毁流程可正常完成，释放后界面恢复初始状态。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-02",
+      "moduleName": "播放控制",
+      "moduleDescription": "支持播放、暂停、停止、拖动进度、倍速与直播时移控制。",
+      "priority": "P0",
+      "test_cases": [
+        {
+          "id": "F02-001",
+          "title": "单播放器可完成播放暂停与停止",
+          "level": "L0",
+          "preconditions": "应用已启动；【单播放器】页签已打开；默认演示地址可访问。",
+          "test_steps": [
+            {
+              "action": "点击【播放】按钮 (API: setUrl, prepare, play)",
+              "checkpoint": "验证视频开始加载并出现首帧画面。"
+            },
+            {
+              "action": "点击【暂停】图标按钮 (API: pause)",
+              "checkpoint": "验证画面停留在当前帧，日志出现暂停播放记录。"
+            },
+            {
+              "action": "再次点击【播放】图标按钮 (API: play)",
+              "checkpoint": "验证视频从暂停位置继续播放。"
+            },
+            {
+              "action": "点击【停止】图标按钮 (API: stop)",
+              "checkpoint": "验证播放进度回到起始位置，播放状态恢复为未播放。"
+            }
+          ],
+          "expected_result": "播放器基础控制链路完整，播放、暂停、恢复和停止状态切换正确。",
+          "postconditions": ""
+        },
+        {
+          "id": "F02-002",
+          "title": "拖动进度条后可从指定位置继续播放",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已开始播放，且视频总时长大于 0。",
+          "test_steps": [
+            {
+              "action": "按住视频区域下方的【播放进度条】并拖动到中间位置 (API: seekTo)",
+              "checkpoint": "验证当前位置时间文本跳转到接近中间位置。"
+            },
+            {
+              "action": "等待 1 秒",
+              "checkpoint": "验证视频从新位置继续播放，日志出现跳转完成记录。"
+            },
+            {
+              "action": "再次拖动【播放进度条】到靠后位置",
+              "checkpoint": "验证当前位置再次更新，画面内容发生明显变化。"
+            }
+          ],
+          "expected_result": "拖动进度条可以把播放位置切换到目标时间点，并保持连续播放。",
+          "postconditions": ""
+        },
+        {
+          "id": "F02-003",
+          "title": "倍速切换后播放节奏可即时变化",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已经成功起播。",
+          "test_steps": [
+            {
+              "action": "点击【1.5x】选项 (API: setSpeed)",
+              "checkpoint": "验证【1.5x】选项进入选中状态。"
+            },
+            {
+              "action": "观察视频播放节奏",
+              "checkpoint": "验证画面推进速度快于正常速度，日志出现设置倍速成功记录。"
+            },
+            {
+              "action": "点击【1.0x】选项 (API: setSpeed)",
+              "checkpoint": "验证视频恢复正常节奏，且【1.0x】重新选中。"
+            }
+          ],
+          "expected_result": "倍速选项切换后能立即影响播放速度，并支持恢复到正常速率。",
+          "postconditions": ""
+        },
+        {
+          "id": "F02-004",
+          "title": "直播时移页可切换到起始点和中间点播放",
+          "level": "L0",
+          "preconditions": "应用已启动；【直播时移】页签已打开；可访问的直播流与时间线服务已经准备完成。",
+          "test_steps": [
+            {
+              "action": "在【直播流地址】输入框中保留有效地址，点击【设置并播放】按钮 (API: setDataSource, prepare, play)",
+              "checkpoint": "验证直播时移播放器进入可播放状态。"
+            },
+            {
+              "action": "点击【跳到起始】按钮 (API: seekToLiveTime)",
+              "checkpoint": "验证【播放位置】或【时移起始】相关信息发生变化。"
+            },
+            {
+              "action": "点击【跳到中间】按钮 (API: seekToLiveTime)",
+              "checkpoint": "验证播放位置进一步变化，画面切换到新的时移时间点。"
+            }
+          ],
+          "expected_result": "直播时移控制可以在可回看范围内完成定位切换，并正确刷新播放信息。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-03",
+      "moduleName": "播放源设置",
+      "moduleDescription": "支持 URL、播放列表和直播数据源等不同播放源输入方式。",
+      "priority": "P0",
+      "test_cases": [
+        {
+          "id": "F03-001",
+          "title": "输入 URL 后可直接完成单视频起播",
+          "level": "L0",
+          "preconditions": "应用已启动；【单播放器】页签已打开；网络连接正常。",
+          "test_steps": [
+            {
+              "action": "在【播放地址】输入框中输入可访问的视频地址",
+              "checkpoint": "验证输入框中显示刚输入的完整地址。"
+            },
+            {
+              "action": "点击【播放】按钮 (API: setUrl, prepare)",
+              "checkpoint": "验证视频开始准备播放，日志出现设置播放地址记录。"
+            },
+            {
+              "action": "等待首帧显示",
+              "checkpoint": "验证视频画面正常出现，进度时间开始增长。"
+            }
+          ],
+          "expected_result": "URL 播放源可被正确接收并完成单播放器起播。",
+          "postconditions": ""
+        },
+        {
+          "id": "F03-002",
+          "title": "自定义资源可加入列表并被点选播放",
+          "level": "L0",
+          "preconditions": "应用已启动；【列表播放器】页签已打开；列表播放器已创建。",
+          "test_steps": [
+            {
+              "action": "在【视频URL地址】输入框中输入有效地址，在【资源UID】输入框中输入自定义标识",
+              "checkpoint": "验证两个输入框都显示刚输入的内容。"
+            },
+            {
+              "action": "点击【添加到列表】按钮 (API: addUrlSource)",
+              "checkpoint": "验证【播放列表】区域新增一条与输入内容对应的资源记录。"
+            },
+            {
+              "action": "点击新增的资源记录",
+              "checkpoint": "验证该记录进入选中状态，并开始准备或进入播放状态。"
+            }
+          ],
+          "expected_result": "列表播放器可以接收用户添加的自定义播放源，并支持点选播放。",
+          "postconditions": ""
+        },
+        {
+          "id": "F03-003",
+          "title": "直播流地址提交后可进入直播播放状态",
+          "level": "L0",
+          "preconditions": "应用已启动；【直播时移】页签已打开；可访问的直播流地址已经准备完成。",
+          "test_steps": [
+            {
+              "action": "在【直播流地址】输入框中输入有效直播地址",
+              "checkpoint": "验证输入框中显示完整直播地址。"
+            },
+            {
+              "action": "按需在【时移时间线地址】输入框中输入可用地址，点击【设置并播放】按钮 (API: setUrl, setLiveTimeShiftUrl, prepare, play)",
+              "checkpoint": "验证页面进入加载状态，播放控制按钮变为可用。"
+            },
+            {
+              "action": "等待画面出现",
+              "checkpoint": "验证视频区域出现直播画面，日志新增直播播放相关记录。"
+            }
+          ],
+          "expected_result": "直播数据源可被播放器接受，并能进入可播放状态。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-04",
+      "moduleName": "视频渲染",
+      "moduleDescription": "支持播放器视图嵌入、缩放、旋转、镜像和背景色显示。",
+      "priority": "P0",
+      "test_cases": [
+        {
+          "id": "F04-001",
+          "title": "切换缩放和旋转模式后画面展示同步变化",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已成功起播。",
+          "test_steps": [
+            {
+              "action": "点击【设置】页签，在【缩放模式】区域点击【填充】选项 (API: setScalingMode)",
+              "checkpoint": "验证【填充】选项进入选中状态，视频画面铺满可视区域。"
+            },
+            {
+              "action": "在【旋转模式】区域点击【90°】选项 (API: setRotateMode)",
+              "checkpoint": "验证【90°】选项进入选中状态，视频画面发生旋转。"
+            },
+            {
+              "action": "点击【适应】选项",
+              "checkpoint": "验证画面比例恢复适应显示，旋转状态仍保持生效。"
+            }
+          ],
+          "expected_result": "渲染区域能够响应缩放和旋转切换，画面展示与所选模式一致。",
+          "postconditions": ""
+        },
+        {
+          "id": "F04-002",
+          "title": "镜像和背景色切换后渲染样式即时刷新",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已成功起播。",
+          "test_steps": [
+            {
+              "action": "点击【设置】页签，在【镜像模式】区域点击【水平】选项 (API: setMirrorMode)",
+              "checkpoint": "验证【水平】选项进入选中状态，画面左右方向发生变化。"
+            },
+            {
+              "action": "在【背景色】区域点击【蓝色】选项 (API: setVideoBackgroundColor)",
+              "checkpoint": "验证【蓝色】选项进入选中状态。"
+            },
+            {
+              "action": "观察视频区域边缘或留白区域",
+              "checkpoint": "验证渲染背景显示为蓝色，镜像后的画面持续稳定。"
+            }
+          ],
+          "expected_result": "镜像方式和背景色切换后会立即反映到视频渲染区域。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-05",
+      "moduleName": "音量控制",
+      "moduleDescription": "支持音量调节、静音切换等基础声音控制。",
+      "priority": "P1",
+      "test_cases": [
+        {
+          "id": "F05-001",
+          "title": "拖动音量并切换静音后声音状态正确变化",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已成功起播；设备媒体音量可用。",
+          "test_steps": [
+            {
+              "action": "在【音量控制】区域拖动【音量滑块】到中间位置 (API: setVolume)",
+              "checkpoint": "验证滑块右侧的数值文本更新为接近 1.00 的新值。"
+            },
+            {
+              "action": "点击【静音】图标按钮 (API: setMuted)",
+              "checkpoint": "验证图标切换为静音状态，视频声音消失。"
+            },
+            {
+              "action": "再次点击【静音】图标按钮",
+              "checkpoint": "验证图标恢复为有声状态，视频声音重新出现。"
+            }
+          ],
+          "expected_result": "音量滑块与静音开关都能立即影响播放器的声音输出状态。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-06",
+      "moduleName": "媒体信息获取",
+      "moduleDescription": "支持查看视频尺寸、时长、当前位置和缓冲进度等媒体信息。",
+      "priority": "P1",
+      "test_cases": [
+        {
+          "id": "F06-001",
+          "title": "播放过程中可查看媒体信息并观察进度更新",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已成功起播。",
+          "test_steps": [
+            {
+              "action": "点击【信息】图标按钮 (API: getMediaInfo)",
+              "checkpoint": "验证日志区域新增媒体信息记录。"
+            },
+            {
+              "action": "观察【媒体信息】区域",
+              "checkpoint": "验证页面显示视频尺寸、旋转角度或其他媒体属性。"
+            },
+            {
+              "action": "等待 3 秒并观察视频下方时间文本与缓冲条",
+              "checkpoint": "验证当前位置持续增长，缓冲进度条同步变化。"
+            }
+          ],
+          "expected_result": "媒体信息可被读取并展示，播放进度与缓冲进度会实时刷新。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-07",
+      "moduleName": "事件回调",
+      "moduleDescription": "支持准备完成、首帧、状态变化、缓冲和完成等事件回调。",
+      "priority": "P0",
+      "test_cases": [
+        {
+          "id": "F07-001",
+          "title": "播放关键事件会写入日志并与界面状态一致",
+          "level": "L0",
+          "preconditions": "应用已启动；【单播放器】页签已打开；可访问的视频地址已准备完成。",
+          "test_steps": [
+            {
+              "action": "点击【日志】页签，点击右上角【清空日志】按钮",
+              "checkpoint": "验证日志内容被清空。"
+            },
+            {
+              "action": "返回【控制】页签并点击【播放】按钮 (API: onPrepared, onRenderingStart, onStateChanged)",
+              "checkpoint": "验证视频开始加载并进入播放流程。"
+            },
+            {
+              "action": "再次打开【日志】页签并观察最新记录",
+              "checkpoint": "验证日志按顺序出现准备完成、首帧渲染和状态变化等事件内容。"
+            }
+          ],
+          "expected_result": "关键事件回调会被完整记录到日志中，且与界面呈现的播放状态一致。",
+          "postconditions": ""
+        },
+        {
+          "id": "F07-002",
+          "title": "播放完成后界面与日志会同步展示结束状态",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已加载可在短时间内播放完成的演示视频。",
+          "test_steps": [
+            {
+              "action": "点击【播放】按钮并等待视频播放到结尾",
+              "checkpoint": "验证视频持续播放直到自然结束。"
+            },
+            {
+              "action": "观察播放按钮和时间进度",
+              "checkpoint": "验证播放按钮恢复为可再次播放状态，当前位置停在结尾或回到结束点。"
+            },
+            {
+              "action": "打开【日志】页签查看最新记录",
+              "checkpoint": "验证日志出现播放完成相关记录。"
+            }
+          ],
+          "expected_result": "视频自然结束时，界面和日志都会同步反映播放完成状态。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-08",
+      "moduleName": "清晰度切换",
+      "moduleDescription": "支持默认带宽、默认分辨率以及多轨视频的清晰度选择。",
+      "priority": "P1",
+      "test_cases": [
+        {
+          "id": "F08-001",
+          "title": "起播前选择默认带宽和分辨率后可保留用户选择",
+          "level": "L0",
+          "preconditions": "应用已启动；【单播放器】页签已打开。",
+          "test_steps": [
+            {
+              "action": "点击【设置】页签，在【默认带宽】区域点击【1Mbps】选项 (API: setDefaultBandWidth)",
+              "checkpoint": "验证【1Mbps】进入选中状态。"
+            },
+            {
+              "action": "在【默认分辨率】区域点击【720P】选项 (API: setDefaultResolution)",
+              "checkpoint": "验证【720P】进入选中状态。"
+            },
+            {
+              "action": "返回【控制】页签点击【播放】按钮",
+              "checkpoint": "验证视频能够正常起播，且再次回到设置页时刚才的默认选项仍保持选中。"
+            }
+          ],
+          "expected_result": "默认带宽与默认分辨率可在起播前完成选择，并在起播后保持生效状态。",
+          "postconditions": ""
+        },
+        {
+          "id": "F08-002",
+          "title": "多码率视频可在自动与指定轨道间切换",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器正在播放包含多视频轨道的资源；页面已出现【清晰度切换】区域。",
+          "test_steps": [
+            {
+              "action": "在【清晰度切换】区域点击任意一个具体清晰度选项 (API: selectTrack)",
+              "checkpoint": "验证该清晰度选项进入选中状态，视频继续播放不中断。"
+            },
+            {
+              "action": "等待 2 秒观察画面",
+              "checkpoint": "验证播放连续，日志出现切换到轨道的记录。"
+            },
+            {
+              "action": "点击【自动】选项",
+              "checkpoint": "验证【自动】重新进入选中状态，视频仍保持播放。"
+            }
+          ],
+          "expected_result": "播放器支持在自动码率和指定视频轨道之间平滑切换。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-09",
+      "moduleName": "字幕支持",
+      "moduleDescription": "支持添加外挂字幕、启用字幕和关闭字幕显示。",
+      "priority": "P2",
+      "test_cases": [
+        {
+          "id": "F09-001",
+          "title": "外挂字幕添加并启用后可在画面中显示",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已成功起播；网络可访问字幕地址。",
+          "test_steps": [
+            {
+              "action": "点击【在线Sintel字幕】按钮 (API: addExtSubtitle)",
+              "checkpoint": "验证页面出现【字幕已添加】提示区域。"
+            },
+            {
+              "action": "在【字幕已添加】提示区域点击任意【启用字幕】按钮 (API: selectExtSubtitle)",
+              "checkpoint": "验证视频画面下方开始出现字幕文本。"
+            },
+            {
+              "action": "点击【禁用字幕】按钮",
+              "checkpoint": "验证字幕文本消失，播放器保持正常播放。"
+            }
+          ],
+          "expected_result": "外挂字幕可被添加、启用和关闭，字幕显示与关闭状态清晰可见。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-10",
+      "moduleName": "截图与缩略图",
+      "moduleDescription": "支持播放截图，以及缩略图能力的状态提示。",
+      "priority": "P2",
+      "test_cases": [
+        {
+          "id": "F10-001",
+          "title": "点击截图按钮后可生成截图保存记录",
+          "level": "L0",
+          "preconditions": "应用已启动；单播放器已成功起播；应用具有写入自身文件目录的能力。",
+          "test_steps": [
+            {
+              "action": "点击【截图】图标按钮 (API: snapshot)",
+              "checkpoint": "验证日志区域新增截图保存相关记录。"
+            },
+            {
+              "action": "打开【日志】页签查看最新记录",
+              "checkpoint": "验证日志中包含可识别的截图文件路径。"
+            },
+            {
+              "action": "返回视频区域继续观察播放",
+              "checkpoint": "验证截图操作不会中断当前播放。"
+            }
+          ],
+          "expected_result": "截图操作会生成明确的保存记录，并且不会影响当前视频播放。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-11",
+      "moduleName": "画中画",
+      "moduleDescription": "支持在具备小窗播放能力的设备上进入画中画并持续播放。",
+      "priority": "P2",
+      "test_cases": [
+        {
+          "id": "F11-001",
+          "title": "设备支持小窗播放时可进入画中画并保持播放",
+          "level": "L0",
+          "preconditions": "应用已启动；测试版本包含【画中画】演示区域；设备支持小窗播放能力。",
+          "test_steps": [
+            {
+              "action": "打开【画中画】演示区域并点击【进入画中画】按钮 (API: startPictureInPicture)",
+              "checkpoint": "验证页面出现进入小窗播放的状态提示。"
+            },
+            {
+              "action": "返回桌面或切换到其他页面后观察小窗画面",
+              "checkpoint": "验证小窗中的视频持续播放且画面可见。"
+            },
+            {
+              "action": "点击小窗中的【返回应用】入口",
+              "checkpoint": "验证应用回到前台后仍保持原来的播放进度。"
+            }
+          ],
+          "expected_result": "在具备能力的设备上，播放器可以进入画中画并在返回应用后保持连续播放。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-12",
+      "moduleName": "悬浮窗播放",
+      "moduleDescription": "针对不支持悬浮窗的设备提供明确提示或安全降级处理。",
+      "priority": "P2",
+      "test_cases": [
+        {
+          "id": "F12-001",
+          "title": "尝试开启悬浮窗时会给出明确的降级提示",
+          "level": "L0",
+          "preconditions": "应用已启动；测试版本包含【悬浮窗播放】演示入口。",
+          "test_steps": [
+            {
+              "action": "打开【悬浮窗播放】演示区域，点击【悬浮窗播放】按钮 (API: showFloatViewForAndroid)",
+              "checkpoint": "验证页面出现当前平台不支持悬浮窗或等价提示。"
+            },
+            {
+              "action": "观察当前视频区域",
+              "checkpoint": "验证主界面的播放状态保持不变，没有出现异常中断。"
+            },
+            {
+              "action": "关闭提示并再次观察控制区域",
+              "checkpoint": "验证页面仍可继续进行普通播放操作。"
+            }
+          ],
+          "expected_result": "当设备不支持悬浮窗能力时，应用会明确告知用户并保持普通播放链路可用。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-13",
+      "moduleName": "视频下载",
+      "moduleDescription": "支持基于 STS 凭证准备下载、开始下载并查看进度。",
+      "priority": "P1",
+      "test_cases": [
+        {
+          "id": "F13-001",
+          "title": "输入 STS 信息后可准备并开始下载视频",
+          "level": "L0",
+          "preconditions": "应用已启动；【视频下载】页签已打开；有效的视频 ID 与 STS 临时凭证已经准备完成。",
+          "test_steps": [
+            {
+              "action": "在【视频ID】、【Region】、【AccessKeyId】、【AccessKeySecret】和【SecurityToken】输入框中填写有效信息",
+              "checkpoint": "验证各输入框完整显示刚填写的内容。"
+            },
+            {
+              "action": "点击【准备下载】按钮 (API: prepare)",
+              "checkpoint": "验证【下载状态】区域显示准备中或准备完成。"
+            },
+            {
+              "action": "点击【开始下载】按钮 (API: start)",
+              "checkpoint": "验证进度条开始变化，状态文本更新为下载中或处理中。"
+            }
+          ],
+          "expected_result": "下载器能够接收 STS 信息并启动下载流程，页面可持续反馈下载进度。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-14",
+      "moduleName": "媒体预加载",
+      "moduleDescription": "在当前演示版本中展示预加载入口及其平台可用性状态。",
+      "priority": "P1",
+      "test_cases": [
+        {
+          "id": "F14-001",
+          "title": "预加载设置区域会清晰提示当前平台能力状态",
+          "level": "L0",
+          "preconditions": "应用已启动；【列表播放器】页签已打开。",
+          "test_steps": [
+            {
+              "action": "观察【预加载设置】区域",
+              "checkpoint": "验证页面明确显示当前平台的预加载能力提示。"
+            },
+            {
+              "action": "点击或展开【预加载个数】下拉框",
+              "checkpoint": "验证该控件保持不可操作或不弹出可选项。"
+            },
+            {
+              "action": "继续观察下方播放列表区域",
+              "checkpoint": "验证预加载设置不可操作时不影响播放列表的正常使用。"
+            }
+          ],
+          "expected_result": "演示版本能够明确展示预加载能力状态，并保证不可用能力不会影响其他播放流程。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-15",
+      "moduleName": "全局设置",
+      "moduleDescription": "支持日志级别、网络能力和本地缓存等全局配置项的统一保存。",
+      "priority": "P1",
+      "test_cases": [
+        {
+          "id": "F15-001",
+          "title": "修改全局设置后可得到明确的保存反馈",
+          "level": "L0",
+          "preconditions": "应用已启动；测试版本包含【全局设置】演示区域。",
+          "test_steps": [
+            {
+              "action": "打开【全局设置】页面，在【日志级别】下拉菜单中选择“Info”，并打开【本地缓存】开关",
+              "checkpoint": "验证所选项与开关状态在界面上立即更新。"
+            },
+            {
+              "action": "在【网络重连次数】输入框中输入“2”，点击【保存全局设置】按钮 (API: setLogLevel, enableLocalCache)",
+              "checkpoint": "验证页面出现保存成功提示。"
+            },
+            {
+              "action": "重新进入【全局设置】页面",
+              "checkpoint": "验证刚保存的日志级别、缓存开关和网络重连次数仍保持为新值。"
+            }
+          ],
+          "expected_result": "全局设置项可被统一保存并在重新进入页面后保持生效状态。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-16",
+      "moduleName": "播放器配置",
+      "moduleDescription": "支持缓冲时长、超时时间、重试次数和代理地址等播放配置。",
+      "priority": "P1",
+      "test_cases": [
+        {
+          "id": "F16-001",
+          "title": "调整播放器配置并应用后日志会显示新参数",
+          "level": "L0",
+          "preconditions": "应用已启动；【单播放器】页签已打开。",
+          "test_steps": [
+            {
+              "action": "点击【设置】页签，将【最大缓冲】、【网络超时】和【重试次数】滑块调整到新值",
+              "checkpoint": "验证每个滑块上方的数值文本同步变化。"
+            },
+            {
+              "action": "在【HTTP代理】输入框中输入测试地址",
+              "checkpoint": "验证输入框显示新代理地址。"
+            },
+            {
+              "action": "点击【应用配置】按钮 (API: setPlayConfig)",
+              "checkpoint": "验证日志区域出现包含缓冲、超时和重试次数的新配置记录。"
+            }
+          ],
+          "expected_result": "播放器配置项可被修改并一次性应用到当前播放器实例。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-17",
+      "moduleName": "滤镜特效",
+      "moduleDescription": "支持在演示界面中切换滤镜样式并即时预览效果。",
+      "priority": "P2",
+      "test_cases": [
+        {
+          "id": "F17-001",
+          "title": "启用滤镜后画面效果会立即变化",
+          "level": "L0",
+          "preconditions": "应用已启动；测试版本包含【滤镜特效】演示区域；单播放器已成功起播。",
+          "test_steps": [
+            {
+              "action": "打开【滤镜特效】演示区域，勾选【启用滤镜】开关",
+              "checkpoint": "验证开关进入选中状态。"
+            },
+            {
+              "action": "在【滤镜样式】下拉菜单中选择一种滤镜",
+              "checkpoint": "验证下拉菜单显示新选择的滤镜名称。"
+            },
+            {
+              "action": "观察视频画面",
+              "checkpoint": "验证画面色调或明暗效果发生明显变化，且播放过程不中断。"
+            }
+          ],
+          "expected_result": "滤镜能力启用后能够即时作用于视频画面，并保持播放稳定。",
+          "postconditions": ""
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-18",
+      "moduleName": "DRM 支持",
+      "moduleDescription": "支持录入 DRM 鉴权信息并完成受保护内容的起播校验。",
+      "priority": "P2",
+      "test_cases": [
+        {
+          "id": "F18-001",
+          "title": "填写 DRM 信息后可播放受保护内容",
+          "level": "L0",
+          "preconditions": "应用已启动；测试版本包含【DRM】演示区域；可访问的 DRM 测试资源和许可证服务已经准备完成。",
+          "test_steps": [
+            {
+              "action": "在【DRM 许可证地址】、【媒体地址】和【鉴权信息】输入框中填写有效内容",
+              "checkpoint": "验证所有输入框都显示刚填写的内容。"
+            },
+            {
+              "action": "点击【应用DRM并播放】按钮 (API: setDrmCallback, prepare, play)",
+              "checkpoint": "验证页面进入加载状态并出现准备播放提示。"
+            },
+            {
+              "action": "等待首帧出现并观察日志区域",
+              "checkpoint": "验证视频能够正常显示，且日志没有出现解密失败提示。"
+            }
+          ],
+          "expected_result": "DRM 鉴权信息生效后，受保护内容能够完成解密并正常起播。",
+          "postconditions": ""
+        }
+      ]
+    }
+  ]
+}
