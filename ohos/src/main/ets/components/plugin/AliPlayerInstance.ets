@@ -40,6 +40,8 @@ export class AliPlayerInstance implements IPlayerInstance {
   private isSurfaceReady: boolean = false;
   private isPrepared: boolean = false;
   private url: string = '';
+  private videoWidth: number = 0;
+  private videoHeight: number = 0;
   
   constructor(playerId: string) {
     this.playerId = playerId;
@@ -155,6 +157,9 @@ export class AliPlayerInstance implements IPlayerInstance {
       onVideoSizeChanged: (width: number, height: number) => {
         hilog.debug(LOG_DOMAIN, LOG_TAG, 'onVideoSizeChanged: %{public}s %{public}dx%{public}d', 
           this.playerId, width, height);
+        // 缓存视频尺寸
+        this.videoWidth = width;
+        this.videoHeight = height;
         const event = new Map<string, Object>();
         event.set('method', 'onVideoSizeChanged');
         event.set('playerId', this.playerId);
@@ -240,7 +245,7 @@ export class AliPlayerInstance implements IPlayerInstance {
         this.sendEventWithArgs('onSnapShot', [
           ['width', width],
           ['height', height],
-          ['path', savedPath]
+          ['snapShotPath', savedPath]
         ]);
       }
     });
@@ -646,6 +651,10 @@ export class AliPlayerInstance implements IPlayerInstance {
   }
   
   getVideoWidth(): number {
+    // 优先返回缓存的尺寸（来自 onVideoSizeChanged 回调）
+    if (this.videoWidth > 0) {
+      return this.videoWidth;
+    }
     if (this.player !== null) {
       try {
         return this.player.getVideoWidth();
@@ -657,6 +666,10 @@ export class AliPlayerInstance implements IPlayerInstance {
   }
   
   getVideoHeight(): number {
+    // 优先返回缓存的尺寸（来自 onVideoSizeChanged 回调）
+    if (this.videoHeight > 0) {
+      return this.videoHeight;
+    }
     if (this.player !== null) {
       try {
         return this.player.getVideoHeight();
@@ -670,8 +683,9 @@ export class AliPlayerInstance implements IPlayerInstance {
   getMediaInfo(): Map<string, Object> {
     const info = new Map<string, Object>();
     info.set('duration', this.getDuration());
-    info.set('width', this.getVideoWidth());
-    info.set('height', this.getVideoHeight());
+    
+    let width = this.getVideoWidth();
+    let height = this.getVideoHeight();
     
     if (this.player !== null) {
       try {
@@ -695,6 +709,12 @@ export class AliPlayerInstance implements IPlayerInstance {
               trackMap.set('trackDefinition', track.vodDefinition);
               trackMap.set('vodPlayUrl', track.vodPlayUrl);
               trackList.push(trackMap);
+              
+              // 如果顶层尺寸为 0，从视频轨道获取 (VIDEO type = 1)
+              if (width === 0 && height === 0 && track.mType === 1) {
+                width = track.videoWidth;
+                height = track.videoHeight;
+              }
             }
             info.set('tracks', trackList);
           }
@@ -703,6 +723,9 @@ export class AliPlayerInstance implements IPlayerInstance {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to get media info: %{public}s', (err as Error).message);
       }
     }
+    
+    info.set('width', width);
+    info.set('height', height);
     
     return info;
   }
