@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -68,6 +69,7 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
   int? _listViewId;
   int? _liveViewId;
   int? _subtitleTrackIndex;
+  String _currentSubtitle = '';
 
   String _result = '';
   String _selectedPlaylistUid = _DemoSamples.defaultPlaylistEntries.first.uid;
@@ -89,14 +91,25 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
   int _durationMs = 0;
   int _videoWidth = 0;
   int _videoHeight = 0;
+  int _videoRotation = 0;
   int _currentLiveTime = 0;
   int _currentShiftTime = 0;
+  int _shiftStartTime = 0;
+  int _shiftEndTime = 0;
   int _downloadProgress = 0;
+  int _maxBufferDuration = 30000;
+  int _highBufferDuration = 5000;
+  int _startBufferDuration = 1000;
+  int _networkTimeout = 15000;
+  int _networkRetryCount = 2;
   Map<String, dynamic> _mediaInfo = <String, dynamic>{};
   _FilterStyle _filterStyle = _FilterStyle.none;
   bool _filterEnabled = false;
+  bool _isPlaying = false;
+  bool _isPrepared = false;
 
   bool _playSingleAfterPrepare = false;
+  bool _playListAfterPrepare = false;
   bool _playLiveAfterPrepare = false;
 
   @override
@@ -152,6 +165,9 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
             setState(() {
               _scenario = _TestCaseScenario.fromJson(moduleMap, caseMap);
             });
+            if (widget.caseId == 'F09-001') {
+              _singleUrlController.text = 'https://media.w3.org/2010/05/sintel/trailer.mp4';
+            }
             _appendLog('载入测试用例 ${widget.caseId}');
             _setResult('已载入测试信息，等待执行操作。');
             return;
@@ -279,6 +295,19 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
   void _bindSinglePlayerCallbacks(FlutterAliplayer player) {
     player.setOnPrepared((String playerId) {
       _appendLog('[$playerId] onPrepared');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isPrepared = true;
+      });
+      player.getDuration().then((dynamic d) {
+        if (d != null && d is int && mounted) {
+          setState(() {
+            _durationMs = d;
+          });
+        }
+      });
       if (_playSingleAfterPrepare) {
         _playSingleAfterPrepare = false;
         unawaited(_runAction(
@@ -286,6 +315,11 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
           action: () => player.play(),
           successMessage: '播放器准备完成，已开始播放。',
         ));
+        if (mounted) {
+          setState(() {
+            _isPlaying = true;
+          });
+        }
       } else {
         _setResult('播放器已准备完成，可手动点击播放。');
       }
@@ -294,8 +328,30 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
       _appendLog('[$playerId] onRenderingStart');
       _setResult('视频首帧已渲染，播放器视图绑定正常。');
     });
+    player.setOnVideoSizeChanged((int width, int height, int? rotation, String playerId) {
+      _appendLog('[$playerId] 视频尺寸: ${width}x$height, rotation=${rotation ?? 0}');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _videoWidth = width;
+        _videoHeight = height;
+        _videoRotation = rotation ?? 0;
+      });
+    });
     player.setOnStateChanged((int newState, String playerId) {
       _appendLog('[$playerId] 状态变化: $newState');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        if (newState == PlayState.started) {
+          _isPlaying = true;
+        } else if (newState == PlayState.paused ||
+            newState == PlayState.stopped) {
+          _isPlaying = false;
+        }
+      });
     });
     player.setOnInfo(
       (int? infoCode, int? extraValue, String? extraMsg, String playerId) {
@@ -319,6 +375,12 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
     player.setOnCompletion((String playerId) {
       _appendLog('[$playerId] onCompletion');
       _setResult('播放完成，界面与日志已同步记录结束状态。');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isPlaying = false;
+      });
     });
     player.setOnError(
       (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
@@ -346,11 +408,23 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
     player.setOnSubtitleShow(
       (int trackIndex, int subtitleId, String subtitle, String playerId) {
         _appendLog('[$playerId] 字幕显示 trackIndex=$trackIndex text=$subtitle');
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _currentSubtitle = subtitle;
+        });
         _setResult('字幕已显示：$subtitle');
       },
     );
     player.setOnSubtitleHide((int trackIndex, int subtitleId, String playerId) {
       _appendLog('[$playerId] 字幕隐藏 trackIndex=$trackIndex');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _currentSubtitle = '';
+      });
       _setResult('字幕已关闭。');
     });
   }
@@ -358,7 +432,16 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
   void _bindListPlayerCallbacks(FlutterAliListPlayer player) {
     player.setOnPrepared((String playerId) {
       _appendLog('[$playerId] 列表播放器准备完成');
-      _setResult('列表资源已准备完成，可点选播放列表项开始播放。');
+      if (_playListAfterPrepare) {
+        _playListAfterPrepare = false;
+        unawaited(_runAction(
+          label: '列表准备完成后自动播放',
+          action: () => player.play(),
+          successMessage: '列表播放器准备完成，已开始播放。',
+        ));
+      } else {
+        _setResult('列表资源已准备完成，可点选播放列表项开始播放。');
+      }
     });
     player.setOnRenderingStart((String playerId) {
       _appendLog('[$playerId] 列表播放器开始渲染');
@@ -374,6 +457,25 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
       (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
         _appendLog('[$playerId] 列表播放错误: ${errorMsg ?? errorExtra ?? errorCode}');
         _setResult('列表播放器报错：${errorMsg ?? errorExtra ?? errorCode}');
+      },
+    );
+    player.setOnInfo(
+      (int? infoCode, int? extraValue, String? extraMsg, String playerId) {
+        if (infoCode != null) {
+          _appendLog('[$playerId] onInfo code=$infoCode value=${extraValue ?? '-'}');
+        }
+        if (!mounted) {
+          return;
+        }
+        if (infoCode == InfoCode.CURRENTPOSITION) {
+          setState(() {
+            _currentPositionMs = extraValue ?? _currentPositionMs;
+          });
+        } else if (infoCode == InfoCode.BUFFEREDPOSITION) {
+          setState(() {
+            _bufferedPositionMs = extraValue ?? _bufferedPositionMs;
+          });
+        }
       },
     );
   }
@@ -405,6 +507,23 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
         _setResult('直播时移播放器报错：${errorMsg ?? errorExtra ?? errorCode}');
       },
     );
+    player.setOnTimeShiftUpdater(
+      (int currentTime, int shiftStart, int shiftEnd, String playerId) {
+        _appendLog('[$playerId] 时移更新: currentTime=$currentTime, range=$shiftStart~$shiftEnd');
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _currentShiftTime = currentTime;
+          _shiftStartTime = shiftStart;
+          _shiftEndTime = shiftEnd;
+        });
+      },
+    );
+    player.setOnSeekLiveCompletion((int playTime, String playerId) {
+      _appendLog('[$playerId] 时移跳转完成: playTime=$playTime');
+      _setResult('时移跳转已完成，当前播放时间已更新。');
+    });
   }
 
   Future<void> _runAction({
@@ -532,9 +651,20 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
         ..clear()
         ..addAll(_DemoSamples.defaultPlaylistEntries);
       _selectedPlaylistUid = _playlistEntries.first.uid;
+      _currentListUid = _playlistEntries.first.uid;
     });
     _appendLog('默认播放列表已载入 ${_playlistEntries.length} 条资源');
-    _setResult('默认播放列表加载完成，可点选任意资源进行播放。');
+    _playListAfterPrepare = true;
+    await _runAction(
+      label: '设置列表播放器 URL',
+      action: () => _listPlayer!.setUrl(_playlistEntries.first.url),
+      successMessage: '播放地址已写入列表播放器，准备发起播放。',
+    );
+    await _runAction(
+      label: '准备列表播放器',
+      action: () => _listPlayer!.prepare(),
+      successMessage: '列表播放器正在准备，准备完成后会自动播放。',
+    );
   }
 
   Future<void> _addCustomPlaylistItem() async {
@@ -560,10 +690,9 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
 
   Future<void> _moveToPlaylistEntry(String uid) async {
     await _ensureListPlayer();
-    await _runAction(
-      label: '切换列表播放资源',
-      action: () => _listPlayer!.moveTo(uid: uid),
-      successMessage: '列表播放器已尝试切换到资源 $uid。',
+    final _PlaylistEntry entry = _playlistEntries.firstWhere(
+      (e) => e.uid == uid,
+      orElse: () => _playlistEntries.first,
     );
     if (!mounted) {
       return;
@@ -572,19 +701,32 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
       _selectedPlaylistUid = uid;
       _currentListUid = uid;
     });
+    _playListAfterPrepare = true;
+    await _runAction(
+      label: '设置列表播放器 URL',
+      action: () => _listPlayer!.setUrl(entry.url),
+      successMessage: '播放地址已写入列表播放器，准备发起播放。',
+    );
+    await _runAction(
+      label: '准备列表播放器',
+      action: () => _listPlayer!.prepare(),
+      successMessage: '列表播放器正在准备，准备完成后会自动播放。',
+    );
   }
 
   Future<void> _applyPlayerConfig() async {
     await _ensureSinglePlayer();
     final AVPConfig config = AVPConfig()
-      ..maxBufferDuration = 50000
-      ..networkTimeout = 10000
-      ..networkRetryCount = _DemoGlobalSettingsStore.networkReconnectCount
+      ..maxBufferDuration = _maxBufferDuration
+      ..highBufferDuration = _highBufferDuration
+      ..startBufferDuration = _startBufferDuration
+      ..networkTimeout = _networkTimeout
+      ..networkRetryCount = _networkRetryCount
       ..httpProxy = _proxyController.text.trim();
     await _runAction(
       label: '应用播放器配置',
       action: () => _singlePlayer!.setPlayConfig(config),
-      successMessage: '播放器配置已应用，可继续观察日志与播放行为。',
+      successMessage: '播放器配置已应用: 最大缓冲${_maxBufferDuration}ms 超时${_networkTimeout}ms 重试${_networkRetryCount}次',
     );
   }
 
@@ -597,12 +739,66 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
       }
       setState(() {
         _mediaInfo = _normalizeMap(mediaInfo);
+        if (_mediaInfo.containsKey('width') && _mediaInfo.containsKey('height')) {
+          final int? width = _mediaInfo['width'] as int?;
+          final int? height = _mediaInfo['height'] as int?;
+          if (width != null && height != null && width > 0 && height > 0) {
+            _videoWidth = width;
+            _videoHeight = height;
+          }
+        }
       });
       _appendLog('媒体信息已刷新');
       _setResult('媒体信息获取成功，已在页面下方展示详情。');
     } catch (error) {
       _appendLog('获取媒体信息失败: $error');
       _setResult('获取媒体信息失败：$error');
+    }
+  }
+
+  Future<void> _addTestSubtitle() async {
+    try {
+      await _ensureSinglePlayer();
+      final directory = Directory.systemTemp.createTempSync('subtitle_');
+      final subtitleFile = File('${directory.path}/test_subtitle.srt');
+      final testSubtitle = '''1
+00:00:01,000 --> 00:00:05,000
+测试字幕第一行
+字幕功能正常工作！
+
+2
+00:00:06,000 --> 00:00:10,000
+测试字幕第二行
+如果看到这行，字幕显示回调已触发
+
+3
+00:00:11,000 --> 00:00:15,000
+测试字幕第三条
+继续播放观看更多字幕
+
+4
+00:00:16,000 --> 00:00:20,000
+测试字幕第四条
+字幕功能测试成功！
+
+5
+00:00:21,000 --> 00:00:30,000
+测试字幕最后一条
+从第21秒到第30秒
+''';
+      await subtitleFile.writeAsString(testSubtitle);
+      final path = 'file://${subtitleFile.path}';
+      setState(() {
+        _subtitleTrackIndex = null;
+        _currentSubtitle = '';
+        _subtitleEnabled = false;
+      });
+      await _singlePlayer!.addExtSubtitle(path);
+      _appendLog('测试字幕已添加: $path');
+      _setResult('测试字幕已添加，请启用字幕并观察画面。');
+    } catch (e) {
+      _appendLog('添加测试字幕失败: $e');
+      _setResult('添加测试字幕失败：$e');
     }
   }
 
@@ -853,6 +1049,7 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
     final bool showLogs = <String>{'F07-001', 'F07-002', 'F10-001'}.contains(
       scenario.id,
     );
+    final bool showSnapshot = scenario.id == 'F10-001';
     final bool showSubtitles = scenario.id == 'F09-001';
     final bool showFilter = scenario.id == 'F17-001';
     final bool showDrm = scenario.id == 'F18-001';
@@ -908,14 +1105,18 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
                 ),
                 _buildActionButton(
                   keyName: 'btn_pause_single',
-                  label: '暂停',
+                  label: _isPlaying ? '暂停' : '恢复',
                   onPressed: () => _runAction(
-                    label: '暂停单播放器',
+                    label: _isPlaying ? '暂停单播放器' : '恢复单播放器',
                     action: () async {
                       await _ensureSinglePlayer();
-                      return _singlePlayer!.pause();
+                      if (_isPlaying) {
+                        await _singlePlayer!.pause();
+                      } else {
+                        await _singlePlayer!.play();
+                      }
                     },
-                    successMessage: '单播放器已暂停。',
+                    successMessage: _isPlaying ? '单播放器已暂停。' : '单播放器已恢复播放。',
                   ),
                 ),
                 _buildActionButton(
@@ -925,7 +1126,15 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
                     label: '停止单播放器',
                     action: () async {
                       await _ensureSinglePlayer();
-                      return _singlePlayer!.stop();
+                      await _singlePlayer!.stop();
+                      if (!mounted) {
+                        return;
+                      }
+                      setState(() {
+                        _isPlaying = false;
+                        _isPrepared = false;
+                        _currentPositionMs = 0;
+                      });
                     },
                     successMessage: '单播放器已停止。',
                   ),
@@ -942,6 +1151,8 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
                       }
                       setState(() {
                         _singlePlayer = null;
+                        _isPlaying = false;
+                        _isPrepared = false;
                         _currentPositionMs = 0;
                         _bufferedPositionMs = 0;
                         _durationMs = 0;
@@ -962,22 +1173,28 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
             children: <Widget>[
               Slider(
                 key: const Key('slider_seek_position'),
-                value: _durationMs <= 0
-                    ? 0
-                    : _currentPositionMs.clamp(0, _durationMs).toDouble(),
+                value: _durationMs > 0
+                    ? _currentPositionMs.clamp(0, _durationMs).toDouble()
+                    : 0,
                 max: _durationMs > 0 ? _durationMs.toDouble() : 1,
-                onChanged: (_) {},
+                onChanged: _isPrepared && _durationMs > 0
+                    ? (double value) {
+                        setState(() {
+                          _currentPositionMs = value.round();
+                        });
+                      }
+                    : null,
                 onChangeEnd: (double value) => _runAction(
                   label: '跳转播放进度',
                   action: () async {
-                      await _ensureSinglePlayer();
-                      return _singlePlayer!.seekTo(
-                        value.round(),
-                        SeekMode.ACCURATE,
-                      );
-                    },
-                    successMessage:
-                      '已请求跳转到 ${_formatDuration(value.round())}，请继续观察播放位置变化。',
+                    await _ensureSinglePlayer();
+                    return _singlePlayer!.seekTo(
+                      value.round(),
+                      SeekMode.ACCURATE,
+                    );
+                  },
+                  successMessage:
+                    '已请求跳转到 ${_formatDuration(value.round())}，请继续观察播放位置变化。',
                 ),
               ),
             ],
@@ -1019,6 +1236,7 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
         if (showSettings) _buildRenderSettingsSection(scenario),
         if (showVolume) _buildVolumeSection(),
         if (showMediaInfo) _buildMediaInfoSection(),
+        if (showSnapshot) _buildSnapshotSection(),
         if (showLogs) _buildLogsSection(),
         if (showSubtitles) _buildSubtitleSection(),
         if (showFilter) _buildFilterSection(),
@@ -1157,33 +1375,43 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
                 _buildActionButton(
                   keyName: 'btn_seek_live_start',
                   label: '跳到起始',
-                  onPressed: () => _runAction(
-                    label: '跳到时移起始点',
-                    action: () async {
-                      await _ensureLivePlayer();
-                      final int target =
-                          (_currentLiveTime - 120000).clamp(0, _currentLiveTime);
-                      return _livePlayer!.seekToLiveTime(target);
-                    },
-                    successMessage:
-                        '已请求跳到时移起始点，请观察播放时间变化。',
-                  ),
+                  onPressed: () async {
+                    if (_shiftStartTime <= 0) {
+                      _appendLog('无可用的时移范围，无法跳转。');
+                      _appendLog('提示：阿里云直播时移服务需要配置有效的时移时间线地址才能获取时移范围。');
+                      _setResult('由于阿里云直播时移服务不支持或未配置有效的时移时间线，该功能无法实现。');
+                      return;
+                    }
+                    await _runAction(
+                      label: '跳到时移起始点',
+                      action: () async {
+                        await _ensureLivePlayer();
+                        return _livePlayer!.seekToLiveTime(_shiftStartTime);
+                      },
+                      successMessage: '已请求跳到时移起始点 ($_shiftStartTime)，请观察播放时间变化。',
+                    );
+                  },
                 ),
                 _buildActionButton(
                   keyName: 'btn_seek_live_middle',
                   label: '跳到中间',
-                  onPressed: () => _runAction(
-                    label: '跳到时移中间点',
-                    action: () async {
-                      await _ensureLivePlayer();
-                      final int anchor = _currentLiveTime == 0
-                          ? DateTime.now().millisecondsSinceEpoch
-                          : _currentLiveTime;
-                      return _livePlayer!.seekToLiveTime(anchor - 60000);
-                    },
-                    successMessage:
-                        '已请求跳到时移中间点，请继续观察播放位置变化。',
-                  ),
+                  onPressed: () async {
+                    if (_shiftStartTime <= 0 || _shiftEndTime <= 0) {
+                      _appendLog('无可用的时移范围，无法跳转。');
+                      _appendLog('提示：阿里云直播时移服务需要配置有效的时移时间线地址才能获取时移范围。');
+                      _setResult('由于阿里云直播时移服务不支持或未配置有效的时移时间线，该功能无法实现。');
+                      return;
+                    }
+                    final int targetTime = _shiftStartTime + ((_shiftEndTime - _shiftStartTime) ~/ 2);
+                    await _runAction(
+                      label: '跳到时移中间点',
+                      action: () async {
+                        await _ensureLivePlayer();
+                        return _livePlayer!.seekToLiveTime(targetTime);
+                      },
+                      successMessage: '已请求跳到时移中间点 ($targetTime)，请继续观察播放位置变化。',
+                    );
+                  },
                 ),
                 _buildActionButton(
                   keyName: 'btn_release_live_player',
@@ -1199,6 +1427,8 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
                         _livePlayer = null;
                         _currentLiveTime = 0;
                         _currentShiftTime = 0;
+                        _shiftStartTime = 0;
+                        _shiftEndTime = 0;
                       });
                     },
                     successMessage: '直播时移播放器已释放，页面恢复初始状态。',
@@ -1215,10 +1445,26 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
               '当前时移播放时间',
               _currentShiftTime == 0 ? '未获取' : _currentShiftTime.toString(),
             ),
+            _buildKeyValueRow(
+              '时移起始',
+              _shiftStartTime == 0 ? '未获取' : _formatTimestamp(_shiftStartTime),
+            ),
+            _buildKeyValueRow(
+              '时移结束',
+              _shiftEndTime == 0 ? '未获取' : _formatTimestamp(_shiftEndTime),
+            ),
           ],
         ),
       ],
     );
+  }
+
+  String _formatTimestamp(int ms) {
+    if (ms <= 0) return '--';
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}:'
+        '${dt.second.toString().padLeft(2, '0')}';
   }
 
   Widget _buildPictureInPictureScenario() {
@@ -1640,6 +1886,82 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
         ],
         if (scenario.id == 'F16-001') ...<Widget>[
           const SizedBox(height: 12),
+          Text('最大缓冲: ${(_maxBufferDuration / 1000).toStringAsFixed(0)}秒',
+              style: const TextStyle(fontSize: 12)),
+          Slider(
+            key: const Key('slider_max_buffer'),
+            value: _maxBufferDuration.toDouble(),
+            min: 5000,
+            max: 120000,
+            divisions: 23,
+            label: '${(_maxBufferDuration / 1000).toStringAsFixed(0)}秒',
+            onChanged: (double value) {
+              setState(() {
+                _maxBufferDuration = value.toInt();
+              });
+            },
+          ),
+          Text('高水位缓冲: ${(_highBufferDuration / 1000).toStringAsFixed(0)}秒',
+              style: const TextStyle(fontSize: 12)),
+          Slider(
+            key: const Key('slider_high_buffer'),
+            value: _highBufferDuration.toDouble(),
+            min: 1000,
+            max: 30000,
+            divisions: 29,
+            label: '${(_highBufferDuration / 1000).toStringAsFixed(0)}秒',
+            onChanged: (double value) {
+              setState(() {
+                _highBufferDuration = value.toInt();
+              });
+            },
+          ),
+          Text('起播缓冲: ${(_startBufferDuration / 1000).toStringAsFixed(1)}秒',
+              style: const TextStyle(fontSize: 12)),
+          Slider(
+            key: const Key('slider_start_buffer'),
+            value: _startBufferDuration.toDouble(),
+            min: 100,
+            max: 5000,
+            divisions: 49,
+            label: '${(_startBufferDuration / 1000).toStringAsFixed(1)}秒',
+            onChanged: (double value) {
+              setState(() {
+                _startBufferDuration = value.toInt();
+              });
+            },
+          ),
+          Text('网络超时: ${(_networkTimeout / 1000).toStringAsFixed(0)}秒',
+              style: const TextStyle(fontSize: 12)),
+          Slider(
+            key: const Key('slider_network_timeout'),
+            value: _networkTimeout.toDouble(),
+            min: 5000,
+            max: 60000,
+            divisions: 11,
+            label: '${(_networkTimeout / 1000).toStringAsFixed(0)}秒',
+            onChanged: (double value) {
+              setState(() {
+                _networkTimeout = value.toInt();
+              });
+            },
+          ),
+          Text('重试次数: $_networkRetryCount 次',
+              style: const TextStyle(fontSize: 12)),
+          Slider(
+            key: const Key('slider_retry_count'),
+            value: _networkRetryCount.toDouble(),
+            min: 0,
+            max: 5,
+            divisions: 5,
+            label: '$_networkRetryCount 次',
+            onChanged: (double value) {
+              setState(() {
+                _networkRetryCount = value.toInt();
+              });
+            },
+          ),
+          const SizedBox(height: 8),
           _buildTextField(
             controller: _proxyController,
             label: 'HTTP代理',
@@ -1722,6 +2044,10 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
           '视频尺寸',
           _videoWidth == 0 ? '未知' : '${_videoWidth} x $_videoHeight',
         ),
+        _buildKeyValueRow(
+          '旋转角度',
+          '${_videoRotation}°',
+        ),
         _buildKeyValueRow('时长', _formatDuration(_durationMs)),
         _buildKeyValueRow('当前位置', _formatDuration(_currentPositionMs)),
         _buildKeyValueRow('缓冲位置', _formatDuration(_bufferedPositionMs)),
@@ -1776,21 +2102,72 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
     );
   }
 
+  Widget _buildSnapshotSection() {
+    return _buildSectionCard(
+      title: '截图功能',
+      children: <Widget>[
+        if (!_isPrepared)
+          const Text(
+            '请先点击【播放】按钮开始播放视频，然后才能截图。',
+            style: TextStyle(color: Colors.orange),
+          ),
+        _buildActionButton(
+          keyName: 'btn_snapshot',
+          label: '截图',
+          onPressed: _isPrepared ? _snapshot : null,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _snapshot() async {
+    try {
+      await _ensureSinglePlayer();
+      await _singlePlayer!.snapshot('');
+      _appendLog('截图请求已发出，等待回调返回保存路径...');
+    } catch (e) {
+      _appendLog('截图失败: $e');
+      _setResult('截图失败：$e');
+    }
+  }
+
   Widget _buildSubtitleSection() {
     return _buildSectionCard(
       title: '字幕支持',
       children: <Widget>[
-        _buildActionButton(
-          keyName: 'btn_add_subtitle',
-          label: '在线Sintel字幕',
-          onPressed: () => _runAction(
-            label: '添加外挂字幕',
-            action: () async {
-              await _ensureSinglePlayer();
-              return _singlePlayer!.addExtSubtitle(_DemoSamples.subtitleUrl);
-            },
-            successMessage: '字幕添加请求已发出，请观察字幕添加回调。',
+        if (!_isPrepared)
+          const Text(
+            '请先点击【播放】按钮开始播放视频，然后才能添加字幕。',
+            style: TextStyle(color: Colors.orange),
           ),
+        Wrap(
+          spacing: 8,
+          children: [
+            _buildActionButton(
+              keyName: 'btn_add_test_subtitle',
+              label: '添加测试字幕',
+              onPressed: _isPrepared ? _addTestSubtitle : null,
+            ),
+            _buildActionButton(
+              keyName: 'btn_add_subtitle',
+              label: '在线Sintel字幕',
+              onPressed: _isPrepared
+                  ? () => _runAction(
+                        label: '添加外挂字幕',
+                        action: () async {
+                          await _ensureSinglePlayer();
+                          setState(() {
+                            _subtitleTrackIndex = null;
+                            _currentSubtitle = '';
+                            _subtitleEnabled = false;
+                          });
+                          return _singlePlayer!.addExtSubtitle(_DemoSamples.subtitleUrl);
+                        },
+                        successMessage: '字幕添加请求已发出，请观察字幕添加回调。',
+                      )
+                  : null,
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -1845,6 +2222,20 @@ class _TestCaseRunnerPageState extends State<TestCaseRunnerPage> {
         const SizedBox(height: 8),
         _buildKeyValueRow('字幕轨道', _subtitleTrackIndex?.toString() ?? '尚未回调'),
         _buildKeyValueRow('字幕状态', _subtitleEnabled ? '已启用' : '未启用'),
+        if (_currentSubtitle.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              _currentSubtitle,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -2215,15 +2606,15 @@ enum _FilterStyle {
 
 class _DemoSamples {
   static const String defaultVideoUrl =
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+      'https://media.w3.org/2010/05/sintel/trailer.mp4';
   static const String altVideoUrl =
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4';
+      'https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4';
   static const String liveUrl =
       'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
   static const String liveTimelineUrl =
       'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
   static const String subtitleUrl =
-      'https://bitdash-a.akamaihd.net/content/sintel/subtitles/subtitles_en.vtt';
+      'https://durian.blender.org/wp-content/content/subtitles/sintel_en.srt';
 
   static const List<_PlaylistEntry> defaultPlaylistEntries = <_PlaylistEntry>[
     _PlaylistEntry(
