@@ -1,14 +1,14 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-11：画中画
+/// 测试用例列表（二级页）- F-11：字幕
 class ModuleF11Page extends StatelessWidget {
   const ModuleF11Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F11-001',
-      title: '设备支持小窗播放时可进入画中画并保持播放',
+      title: '添加外挂字幕文件到播放器',
       level: 'L0',
     ),
   ];
@@ -16,7 +16,7 @@ class ModuleF11Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-11 画中画')),
+      appBar: AppBar(title: const Text('F-11 字幕')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

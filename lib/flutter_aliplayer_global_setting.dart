@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_aliplayer/flutter_avpdef.dart';
 
@@ -60,7 +61,7 @@ class FlutterAliPlayerGlobalSettings {
     try {
       await methodChannel.invokeMethod('setCacheUrlHashCallback');
     } on PlatformException catch (e) {
-      print("Failed to register callback: '${e.message}'.");
+      debugPrint("Failed to register callback: '${e.message}'.");
     }
   }
 
@@ -102,7 +103,7 @@ class FlutterAliPlayerGlobalSettings {
     try {
       await methodChannel.invokeMethod('setNetworkCallback');
     } on PlatformException catch (e) {
-      print("Failed to register callback: '${e.message}'.");
+      debugPrint("Failed to register callback: '${e.message}'.");
     }
   }
 
@@ -134,10 +135,9 @@ class FlutterAliPlayerGlobalSettings {
       await methodChannel
           .invokeMethod('setAdaptiveDecoderGetBackupURLCallback');
     } on PlatformException catch (e) {
-      print("Failed to register callback: '${e.message}'.");
+      debugPrint("Failed to register callback: '${e.message}'.");
     }
   }
-
 
   /// 设置系统亮度
   static Future<void> setSystemBrightness(double value) async {
@@ -147,7 +147,6 @@ class FlutterAliPlayerGlobalSettings {
       "brightness": clampedValue,
     });
   }
-
 
   /// 获取系统亮度
   static Future<double?> getSystemBrightness() async {

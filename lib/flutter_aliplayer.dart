@@ -12,7 +12,6 @@ import 'package:flutter_aliplayer/flutter_avpdef.dart';
 export 'flutter_avpdef.dart';
 
 typedef OnPrepared = void Function(String playerId);
-typedef OnSurfaceReady = void Function(String playerId);
 
 typedef OnRenderingStart = void Function(String playerId);
 typedef OnVideoSizeChanged = void Function(
@@ -82,7 +81,6 @@ class FlutterAliplayer {
   OnLoadingProgress? _onLoadingProgress;
   OnLoadingEnd? _onLoadingEnd;
   OnPrepared? onPrepared;
-  OnSurfaceReady? onSurfaceReady;
   OnRenderingStart? onRenderingStart;
   OnVideoSizeChanged? _onVideoSizeChanged;
   OnSeekComplete? _onSeekComplete;
@@ -177,6 +175,7 @@ class FlutterAliplayer {
         "aliPlayer_onPrepare${playerId}",
         StringCodec(),
       );
+      // 注册调用 Flutter 端的 callback, 并发送至 Native 端
       _basicMessageChannel.setMessageHandler((String? msg) async {
         Map<String, dynamic> map = jsonDecode(msg!);
         String playerId = map['playerId'];
@@ -187,10 +186,6 @@ class FlutterAliplayer {
         return '';
       });
     }
-  }
-
-  void setOnSurfaceReady(OnSurfaceReady? surfaceReady) {
-    this.onSurfaceReady = surfaceReady;
   }
 
   /// 播放器事件回调，首帧显示事件
@@ -1297,10 +1292,8 @@ class FlutterAliplayer {
     if (Platform.isIOS) {
       // docTypeForIOS的取值代表沙盒目录路径类型 "0":Documents, "1":Library, "2":Caches, 其他:Documents
       map['docTypeForIOS'] = docTypeForIOS.index.toString();
-    } else if (Platform.isAndroid || Platform.isOhos) {
-      // Android/OHOS 不需设置docType，直接传递localCacheDir
     } else {
-      // 其他平台
+      // 安卓不需设置docType，直接传递localCacheDir
     }
 
     return FlutterAliPlayerFactory.methodChannel
@@ -1450,7 +1443,7 @@ class FlutterAliplayer {
       await FlutterAliPlayerFactory.methodChannel
           .invokeMethod('setDrmCallback');
     } on PlatformException catch (e) {
-      print("Failed to register callback: '${e.message}'.");
+      debugPrint("Failed to register callback: '${e.message}'.");
     }
   }
 
@@ -1478,7 +1471,7 @@ class FlutterAliplayer {
       await FlutterAliPlayerFactory.methodChannel
           .invokeMethod('setOnPreRenderFrameCallback', wrapWithPlayerId());
     } on PlatformException catch (e) {
-      print("Failed to register callback: '${e.message}'.");
+      debugPrint("Failed to register callback: '${e.message}'.");
     }
   }
 
@@ -1586,14 +1579,14 @@ class FlutterAliplayer {
       await FlutterAliPlayerFactory.methodChannel
           .invokeMethod('setOnRenderFrameCallback', wrapWithPlayerId());
     } on PlatformException catch (e) {
-      print("Failed to register callback: '${e.message}'.");
+      debugPrint("Failed to register callback: '${e.message}'.");
     }
   }
 
   /// 播放前转换播放URL。
   /// 对于视频播放，请在播放前尝试转换播放URL
   Future<void> setConvertURLCallback(Function(String, String) callback) async {
-// print("[FB->F] registerConvertURLCallback");
+// debugPrint"[FB->F] registerConvertURLCallback");
     BasicMessageChannel<String> _basicMessageChannel =
         BasicMessageChannel<String>(
       "convertURL",
@@ -1605,9 +1598,9 @@ class FlutterAliplayer {
         Map<String, dynamic> parsedArguments = jsonDecode(message);
         String s1 = parsedArguments["param1"];
         String s2 = parsedArguments["param2"];
-// print("[F->D] registerConvertURLCallback callback: $s1, $s2");
+// debugPrint"[F->D] registerConvertURLCallback callback: $s1, $s2");
         String result = callback(s1, s2);
-// print("[F->FB] registerConvertURLCallback result: $result");
+// debugPrint"[F->FB] registerConvertURLCallback result: $result");
 // 处理接收到的消息
         return result; // 返回结果给 Native
       }
@@ -1615,12 +1608,12 @@ class FlutterAliplayer {
     });
 
     try {
-// print("[FB->F] setConvertURLCallback");
+// debugPrint"[FB->F] setConvertURLCallback");
       await FlutterAliPlayerFactory.methodChannel
           .invokeMethod('setConvertURLCallback', wrapWithPlayerId());
-// print("[F->D] setConvertURLCallback return");
+// debugPrint"[F->D] setConvertURLCallback return");
     } on PlatformException catch (e) {
-      print("Failed to register callback: '${e.message}'.");
+      debugPrint("Failed to register callback: '${e.message}'.");
     }
   }
 
@@ -1634,11 +1627,6 @@ class FlutterAliplayer {
       case "onPrepared":
         if (player.onPrepared != null) {
           player.onPrepared!(playerId);
-        }
-        break;
-      case "onSurfaceReady":
-        if (player.onSurfaceReady != null) {
-          player.onSurfaceReady!(playerId);
         }
         break;
       case "onRenderingStart":
@@ -1715,7 +1703,7 @@ class FlutterAliplayer {
 // case "onStateChanged":
 //   if (player.onStateChanged != null) {
 //     int newState = event['newState'];
-//     print("[player][cbk][stateChanged] thisPlayerId :${this.playerId} otherPlayerId ${playerId}  hashCode ${this.hashCode}");
+//     debugPrint"[player][cbk][stateChanged] thisPlayerId :${this.playerId} otherPlayerId ${playerId}  hashCode ${this.hashCode}");
 //     player.onStateChanged!(newState, playerId);
 //   }
 //   break;
@@ -1779,8 +1767,6 @@ class FlutterAliplayer {
         if (player._onThumbnailGetSuccess != null) {
           if (Platform.isIOS) {
             range = Int64List.fromList(range.cast<int>());
-          } else if (Platform.isAndroid || Platform.isOhos) {
-            // Android/OHOS 不需要转换 range
           }
           player._onThumbnailGetSuccess!(bitmap, range, playerId);
         }
@@ -1848,7 +1834,7 @@ class FlutterAliplayer {
           player._onStreamSwitchedFail!(url, errorCode, errorMsg);
         }
         var url = event['url'];
-        print("EventStreamSwitchedFail ${event}");
+        debugPrint("EventStreamSwitchedFail ${event}");
         break;
       case "AliPlayer_LogCallBackInfo":
         if (null != _onLogInfoCallback) {
@@ -1861,7 +1847,7 @@ class FlutterAliplayer {
         {
 // if (null != player._onURLSourceExpiredListener) {
 //   String url = event['url'];
-//   print("[AliyunPlayer] OnURLSourceExpiredListener $url");
+//   debugPrint"[AliyunPlayer] OnURLSourceExpiredListener $url");
 //   player._onURLSourceExpiredListener!(url);
 // }
         }
@@ -1934,7 +1920,6 @@ class _VideoPlayerState extends State<AliPlayerView> {
           "y": widget.y,
           "width": widget.width,
           "height": widget.height,
-          "viewType": widget.aliPlayerViewType.name,
         },
         creationParamsCodec: const StandardMessageCodec(),
       );

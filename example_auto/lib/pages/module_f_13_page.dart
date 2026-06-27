@@ -1,14 +1,19 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-13：视频下载
+/// 测试用例列表（二级页）- F-13：多码率切换
 class ModuleF13Page extends StatelessWidget {
   const ModuleF13Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F13-001',
-      title: '输入 STS 信息后可准备并开始下载视频',
+      title: '获取视频媒体信息包含Track列表',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F13-002',
+      title: '切换视频清晰度轨道',
       level: 'L0',
     ),
   ];
@@ -16,7 +21,7 @@ class ModuleF13Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-13 视频下载')),
+      appBar: AppBar(title: const Text('F-13 多码率切换')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

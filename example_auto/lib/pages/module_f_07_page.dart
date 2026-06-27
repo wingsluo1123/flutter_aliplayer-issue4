@@ -1,19 +1,19 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-07：事件回调
+/// 测试用例列表（二级页）- F-07：播放器通用配置
 class ModuleF07Page extends StatelessWidget {
   const ModuleF07Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F07-001',
-      title: '播放关键事件会写入日志并与界面状态一致',
+      title: '设置AVPConfig播放器配置',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F07-002',
-      title: '播放完成后界面与日志会同步展示结束状态',
+      title: '设置播放器场景模式为长视频',
       level: 'L0',
     ),
   ];
@@ -21,7 +21,7 @@ class ModuleF07Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-07 事件回调')),
+      appBar: AppBar(title: const Text('F-07 播放器通用配置')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

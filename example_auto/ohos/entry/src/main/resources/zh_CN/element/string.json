@@ -11,10 +11,6 @@
     {
       "name": "EntryAbility_label",
       "value": "flutter_aliplayer_example"
-    },
-    {
-      "name": "perm_write_imagevideo_reason",
-      "value": "用于保存视频截图到相册"
     }
   ]
 }

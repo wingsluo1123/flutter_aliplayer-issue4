@@ -1,8 +1,10 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F03-001：输入 URL 后可直接完成单视频起播
+
+/// 测试用例详情 - F03-001：准备播放器开始播放
 class TestCaseF03001Page extends StatefulWidget {
   const TestCaseF03001Page({Key? key}) : super(key: key);
 
@@ -11,16 +13,149 @@ class TestCaseF03001Page extends StatefulWidget {
 }
 
 class _TestCaseF03001PageState extends State<TestCaseF03001Page> {
+  FlutterAliplayer? _player;
   String _result = '';
+  final TextEditingController _urlCtrl = TextEditingController();
+  final TextEditingController _seekCtrl = TextEditingController();
+  final TextEditingController _startTimeCtrl = TextEditingController();
+  final TextEditingController _maxDeltaCtrl = TextEditingController();
+  int _seekMode = 1;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _createPlayer();
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  Future<void> _createPlayer() async {
+    try {
+      _player = FlutterAliPlayerFactory.createAliPlayer();
+      await _player!.create();
+      setState(() { _result = '播放器已创建'; });
+    } catch (e) { setState(() { _result = '创建失败: $e'; }); }
+  }
+
+  Future<void> _setUrl() async {
+    try {
+      final url = _urlCtrl.text.trim();
+      if (url.isEmpty) { setState(() { _result = '请输入URL'; }); return; }
+      await _player!.setUrl(url);
+      setState(() { _result = 'URL已设置: $url'; });
+    } catch (e) { setState(() { _result = '设置URL失败: $e'; }); }
+  }
+
+  Future<void> _prepare() async {
+    try {
+      await _player!.prepare();
+      setState(() { _result = '准备完成'; });
+    } catch (e) { setState(() { _result = '准备失败: $e'; }); }
+  }
+
+  Future<void> _play() async {
+    try {
+      await _player!.play();
+      setState(() { _result = '播放中'; });
+    } catch (e) { setState(() { _result = '播放失败: $e'; }); }
+  }
+
+  Future<void> _pause() async {
+    try {
+      await _player!.pause();
+      setState(() { _result = '已暂停'; });
+    } catch (e) { setState(() { _result = '暂停失败: $e'; }); }
+  }
+
+  Future<void> _stop() async {
+    try {
+      await _player!.stop();
+      setState(() { _result = '已停止'; });
+    } catch (e) { setState(() { _result = '停止失败: $e'; }); }
+  }
+
+  Future<void> _seek() async {
+    final pos = int.tryParse(_seekCtrl.text.trim()) ?? 0;
+    try {
+      await _player!.seekTo(pos, _seekMode);
+      setState(() { _result = '已跳转到: $pos ms'; });
+    } catch (e) { setState(() { _result = '跳转失败: $e'; }); }
+  }
+
+  Future<void> _reload() async {
+    try {
+      await _player!.reload();
+      setState(() { _result = '已重新加载'; });
+    } catch (e) { setState(() { _result = '重新加载失败: $e'; }); }
+  }
+
+  Future<void> _setStartTime() async {
+    final time = int.tryParse(_startTimeCtrl.text.trim()) ?? 0;
+    try {
+      await _player!.setStartTime(time, _seekMode);
+      setState(() { _result = '起播时间已设置: $time ms'; });
+    } catch (e) { setState(() { _result = '设置起播时间失败: $e'; }); }
+  }
+
+  Future<void> _setMaxDelta() async {
+    final delta = int.tryParse(_maxDeltaCtrl.text.trim()) ?? 5000;
+    try {
+      await _player!.setMaxAccurateSeekDelta(delta);
+      setState(() { _result = '精准seek最大间隔已设置: $delta ms'; });
+    } catch (e) { setState(() { _result = '设置失败: $e'; }); }
+  }
+
+  Future<void> _getDuration() async {
+    try {
+      final d = await _player!.getDuration();
+      setState(() { _result = '视频总时长: $d ms'; });
+    } catch (e) { setState(() { _result = '获取时长失败: $e'; }); }
+  }
+
+  Future<void> _getPosition() async {
+    try {
+      final pos = await _player!.getCurrentPosition();
+      setState(() { _result = '当前位置: $pos ms'; });
+    } catch (e) { setState(() { _result = '获取位置失败: $e'; }); }
+  }
+
+  Future<void> _getPlayedDuration() async {
+    try {
+      final d = await _player!.getPlayedDuration();
+      setState(() { _result = '已播放时长: $d ms'; });
+    } catch (e) { setState(() { _result = '获取失败: $e'; }); }
+  }
+
+  Future<void> _getUtcTime() async {
+    try {
+      final t = await _player!.getCurrentUtcTime();
+      setState(() { _result = '当前UTC时间: $t'; });
+    } catch (e) { setState(() { _result = '获取UTC时间失败: $e'; }); }
+  }
+
+  Future<void> _getBuffered() async {
+    try {
+      final pos = await _player!.getBufferedPosition();
+      setState(() { _result = '已缓存位置: $pos ms'; });
+    } catch (e) { setState(() { _result = '获取缓存位置失败: $e'; }); }
+  }
+
+  Future<void> _getDownloadSpeed() async {
+    try {
+      final speed = await _player!.getCurrentDownloadSpeed();
+      setState(() { _result = '下载速度: $speed bps'; });
+    } catch (e) { setState(() { _result = '获取下载速度失败: $e'; }); }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    _urlCtrl.dispose(); _seekCtrl.dispose(); _startTimeCtrl.dispose(); _maxDeltaCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F03-001 输入 URL 后可直接完成单视频起播')),
+      appBar: AppBar(title: const Text('F03-001 准备播放器开始播放')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -30,77 +165,97 @@ class _TestCaseF03001PageState extends State<TestCaseF03001Page> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  const Text(
-                    '测试信息',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('优先级: L0'),
+                          Text('前置条件: 应用已启动，播放器已创建，视频源已设置'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；【单播放器】页签已打开；网络连接正常。'),
+                          Text('测试步骤: 点击【准备】按钮 (API: prepare)'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 在【播放地址】输入框中输入可访问的视频地址 [验证点: 验证输入框中显示刚输入的完整地址。]; 2. 点击【播放】按钮 (API: setUrl, prepare) [验证点: 验证视频开始准备播放，日志出现设置播放地址记录。]; 3. 等待首帧显示 [验证点: 验证视频画面正常出现，进度时间开始增长。]'),
-                          const SizedBox(height: 4),
-                          Text('预期结果: URL 播放源可被正确接收并完成单播放器起播。'),
-                          const SizedBox(height: 4),
-                          Text('后置条件: '),
+                          Text('预期结果: 播放器完成准备，触发准备完成事件'),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  const SizedBox(height: 12),
+                  // Standard controls for all F-03 tests
+                  TextField(
+                    key: const Key('input_url'),
+                    controller: _urlCtrl,
+                    decoration: const InputDecoration(labelText: '视频URL', isDense: true),
+                  ),
+                  ElevatedButton(
+                    key: const Key('btn_set_url'),
+                    onPressed: _setUrl,
+                    child: const Text('设置URL源'),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_prepare'), onPressed: _prepare, child: const Text('准备')),
+                      ElevatedButton(key: const Key('btn_play'), onPressed: _play, child: const Text('播放')),
+                      ElevatedButton(key: const Key('btn_pause'), onPressed: _pause, child: const Text('暂停')),
+                      ElevatedButton(key: const Key('btn_stop'), onPressed: _stop, child: const Text('停止')),
+                      ElevatedButton(key: const Key('btn_reload'), onPressed: _reload, child: const Text('重新加载')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      SizedBox(width: 100, child: TextField(
+                        key: const Key('input_seek_pos'),
+                        controller: _seekCtrl,
+                        decoration: const InputDecoration(labelText: '跳转位置(ms)', isDense: true),
+                      )),
+                      const SizedBox(width: 8),
+                      DropdownButton<int>(
+                        value: _seekMode,
+                        items: const [
+                          DropdownMenuItem(value: 1, child: Text('精确模式')),
+                          DropdownMenuItem(value: 16, child: Text('非精确模式')),
+                        ],
+                        onChanged: (v) => setState(() => _seekMode = v ?? 1),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(key: const Key('btn_seek'), onPressed: _seek, child: const Text('跳转')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      SizedBox(width: 120, child: TextField(
+                        controller: _startTimeCtrl,
+                        decoration: const InputDecoration(labelText: '起播位置(ms)', isDense: true),
+                      )),
+                      ElevatedButton(key: const Key('btn_set_start_time'), onPressed: _setStartTime, child: const Text('设置起播')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      SizedBox(width: 120, child: TextField(
+                        controller: _maxDeltaCtrl,
+                        decoration: const InputDecoration(labelText: '精准seek间隔(ms)', isDense: true),
+                      )),
+                      ElevatedButton(key: const Key('btn_set_max_delta'), onPressed: _setMaxDelta, child: const Text('应用')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_get_duration'), onPressed: _getDuration, child: const Text('获取总时长')),
+                      ElevatedButton(key: const Key('btn_get_position'), onPressed: _getPosition, child: const Text('获取当前位置')),
+                      ElevatedButton(key: const Key('btn_get_played'), onPressed: _getPlayedDuration, child: const Text('获取已播放时长')),
+                      ElevatedButton(key: const Key('btn_get_utc'), onPressed: _getUtcTime, child: const Text('获取UTC时间')),
+                      ElevatedButton(key: const Key('btn_get_buffered'), onPressed: _getBuffered, child: const Text('获取缓存位置')),
+                      ElevatedButton(key: const Key('btn_get_speed'), onPressed: _getDownloadSpeed, child: const Text('获取下载速度')),
+                    ],
+                  ),
                 ],
               ),
             ),

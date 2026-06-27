@@ -1,14 +1,19 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-14：媒体预加载
+/// 测试用例列表（二级页）- F-14：直播流
 class ModuleF14Page extends StatelessWidget {
   const ModuleF14Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F14-001',
-      title: '预加载设置区域会清晰提示当前平台能力状态',
+      title: '通过直播URL播放直播流',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F14-002',
+      title: '通过直播STS方式设置直播源',
       level: 'L0',
     ),
   ];
@@ -16,7 +21,7 @@ class ModuleF14Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-14 媒体预加载')),
+      appBar: AppBar(title: const Text('F-14 直播流')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

@@ -56,7 +56,6 @@ class FlutterAliPlayerFactory {
     if (Platform.isAndroid) {
       methodChannel.invokeMethod("showFloatViewForAndroid", viewId);
     }
-    // OHOS 不支持悬浮窗，静默跳过
   }
 
   /// 隐藏悬浮窗（仅 Android）
@@ -69,7 +68,6 @@ class FlutterAliPlayerFactory {
     if (Platform.isAndroid) {
       methodChannel.invokeMethod("hideFloatViewForAndroid");
     }
-    // OHOS 不支持悬浮窗，静默跳过
   }
 
   ///  检查悬浮窗权限 （仅 Android）
@@ -78,9 +76,6 @@ class FlutterAliPlayerFactory {
   static Future<bool> checkFloatViewPermission() async {
     if (Platform.isAndroid) {
       return await methodChannel.invokeMethod("checkFloatViewPermission");
-    } else if (Platform.isOhos) {
-      // OHOS 不支持悬浮窗，返回 true 表示"无需权限检查"
-      return true;
     } else {
       return true;
     }
@@ -93,9 +88,6 @@ class FlutterAliPlayerFactory {
   static Future<bool> requestFloatViewPermission() async {
     if (Platform.isAndroid) {
       return await methodChannel.invokeMethod("requestFloatViewPermission");
-    } else if (Platform.isOhos) {
-      // OHOS 不支持悬浮窗，返回 true 表示"权限请求成功(无需请求)"
-      return true;
     } else {
       return true;
     }
@@ -116,7 +108,6 @@ class FlutterAliPlayerFactory {
         'backButton': backButton,
       });
     }
-    // OHOS 不支持悬浮窗，静默跳过
   }
 
   /// 设置悬浮窗图标是否显示（仅 Android）
@@ -133,12 +124,11 @@ class FlutterAliPlayerFactory {
         enable,
       );
     }
-    // OHOS 不支持悬浮窗，静默跳过
   }
 
   /// 选择sdk
   static void loadRtsLibrary(bool isAliPlayerSDK) async {
-    if (Platform.isAndroid || Platform.isOhos) {
+    if (Platform.isAndroid) {
       methodChannel.invokeMethod("loadRtsLibrary", isAliPlayerSDK);
     }
   }

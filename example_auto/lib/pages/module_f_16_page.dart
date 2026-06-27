@@ -1,14 +1,29 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-16：播放器配置
+/// 测试用例列表（二级页）- F-16：短视频列表播放
 class ModuleF16Page extends StatelessWidget {
   const ModuleF16Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F16-001',
-      title: '调整播放器配置并应用后日志会显示新参数',
+      title: '向播放列表添加URL视频资源',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F16-002',
+      title: '向播放列表添加VID视频资源',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F16-003',
+      title: '播放下一个视频',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F16-004',
+      title: '播放上一个视频',
       level: 'L0',
     ),
   ];
@@ -16,7 +31,7 @@ class ModuleF16Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-16 播放器配置')),
+      appBar: AppBar(title: const Text('F-16 短视频列表播放')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

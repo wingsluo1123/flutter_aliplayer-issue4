@@ -8,7 +8,9 @@
   "license": "",
   "dependencies": {
     "premierlibrary": "file:../../../ohos/libs/premierlibrary.har",
-    "aliyunPlayerSharedCpplibrary": "file:../libs/aliyunPlayerSharedCpplibrary.har"
-  }
+    "aliyunplayersharedcpplibrary": "file:../../../ohos/libs/aliyunPlayerSharedCpplibrary.har",
+    "artclibrary": "file:../../../ohos/libs/artclibrary_7.12.0.har",
+    "rtssdk": "file:../../../ohos/libs/RtsSDK_7.12.0.har"
+  },
 }
 

@@ -6,9 +6,10 @@
       "default",
       "tablet"
     ],
-    "requestPermissions": [
+    "metadata": [
       {
-        "name": "ohos.permission.INTERNET"
+        "name": "ohos.system_capabilities",
+        "value": "SystemCapability.Multimedia.AVSession.Core"
       }
     ]
   }

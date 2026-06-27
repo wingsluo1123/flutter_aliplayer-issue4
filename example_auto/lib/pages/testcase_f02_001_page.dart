@@ -1,8 +1,10 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F02-001：单播放器可完成播放暂停与停止
+
+/// 测试用例详情 - F02-001：通过URL设置点播视频源
 class TestCaseF02001Page extends StatefulWidget {
   const TestCaseF02001Page({Key? key}) : super(key: key);
 
@@ -11,16 +13,99 @@ class TestCaseF02001Page extends StatefulWidget {
 }
 
 class _TestCaseF02001PageState extends State<TestCaseF02001Page> {
+  FlutterAliplayer? _player;
   String _result = '';
+  final TextEditingController _urlCtrl = TextEditingController();
+  final TextEditingController _vidCtrl = TextEditingController();
+  final TextEditingController _akIdCtrl = TextEditingController();
+  final TextEditingController _akSecretCtrl = TextEditingController();
+  final TextEditingController _tokenCtrl = TextEditingController();
+  final TextEditingController _authCtrl = TextEditingController();
+  final TextEditingController _mpsCtrl = TextEditingController();
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _createPlayer();
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  Future<void> _createPlayer() async {
+    try {
+      _player = FlutterAliPlayerFactory.createAliPlayer();
+      await _player!.create();
+      setState(() { _result = '播放器已创建'; });
+    } catch (e) {
+      setState(() { _result = '创建播放器失败: $e'; });
+    }
+  }
+
+  Future<void> _setUrl() async {
+    if (_player == null) return;
+    try {
+      final url = _urlCtrl.text.trim();
+      if (url.isEmpty) { setState(() { _result = '请输入URL'; }); return; }
+      await _player!.setUrl(url);
+      setState(() { _result = 'URL源已设置'; });
+    } catch (e) { setState(() { _result = '设置URL失败: $e'; }); }
+  }
+
+  Future<void> _setVidSts() async {
+    if (_player == null) return;
+    try {
+      await _player!.setVidSts(
+        vid: _vidCtrl.text.trim(),
+        accessKeyId: _akIdCtrl.text.trim(),
+        accessKeySecret: _akSecretCtrl.text.trim(),
+        securityToken: _tokenCtrl.text.trim(),
+      );
+      setState(() { _result = 'VID+STS源已设置'; });
+    } catch (e) { setState(() { _result = '设置VID+STS失败: $e'; }); }
+  }
+
+  Future<void> _setVidAuth() async {
+    if (_player == null) return;
+    try {
+      await _player!.setVidAuth(
+        vid: _vidCtrl.text.trim(),
+        playAuth: _authCtrl.text.trim(),
+      );
+      setState(() { _result = 'VID+Auth源已设置'; });
+    } catch (e) { setState(() { _result = '设置VID+Auth失败: $e'; }); }
+  }
+
+  Future<void> _setVidMps() async {
+    if (_player == null) return;
+    try {
+      final mpsInfo = <String, dynamic>{'vid': _vidCtrl.text.trim()};
+      if (_mpsCtrl.text.trim().isNotEmpty) {
+        mpsInfo['mpsConfig'] = _mpsCtrl.text.trim();
+      }
+      await _player!.setVidMps(mpsInfo);
+      setState(() { _result = 'VID+MPS源已设置'; });
+    } catch (e) { setState(() { _result = '设置VID+MPS失败: $e'; }); }
+  }
+
+  Future<void> _prepare() async {
+    if (_player == null) return;
+    try {
+      await _player!.prepare();
+      setState(() { _result = '准备就绪'; });
+    } catch (e) { setState(() { _result = '准备失败: $e'; }); }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    _urlCtrl.dispose(); _vidCtrl.dispose();
+    _akIdCtrl.dispose(); _akSecretCtrl.dispose(); _tokenCtrl.dispose();
+    _authCtrl.dispose(); _mpsCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F02-001 单播放器可完成播放暂停与停止')),
+      appBar: AppBar(title: const Text('F02-001 通过URL设置点播视频源')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -30,77 +115,84 @@ class _TestCaseF02001PageState extends State<TestCaseF02001Page> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  const Text(
-                    '测试信息',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('优先级: L0'),
+                          Text('前置条件: 应用已启动，已创建播放器实例'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；【单播放器】页签已打开；默认演示地址可访问。'),
+                          Text('测试步骤: 在【视频源URL】输入框中输入有效视频URL地址，点击【设置URL源】按钮 (API: setUrl)'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【播放】按钮 (API: setUrl, prepare, play) [验证点: 验证视频开始加载并出现首帧画面。]; 2. 点击【暂停】图标按钮 (API: pause) [验证点: 验证画面停留在当前帧，日志出现暂停播放记录。]; 3. 再次点击【播放】图标按钮 (API: play) [验证点: 验证视频从暂停位置继续播放。]; 4. 点击【停止】图标按钮 (API: stop) [验证点: 验证播放进度回到起始位置，播放状态恢复为未播放。]'),
-                          const SizedBox(height: 4),
-                          Text('预期结果: 播放器基础控制链路完整，播放、暂停、恢复和停止状态切换正确。'),
-                          const SizedBox(height: 4),
-                          Text('后置条件: '),
+                          Text('预期结果: 播放器成功识别URL源，可进入准备播放状态'),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  const SizedBox(height: 12),
+                  // URL source
+                  TextField(
+                    key: const Key('input_video_url'),
+                    controller: _urlCtrl,
+                    decoration: const InputDecoration(labelText: '视频URL', isDense: true),
+                  ),
+                  ElevatedButton(
+                    key: const Key('btn_set_url'),
+                    onPressed: _setUrl,
+                    child: const Text('设置URL源'),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  // VID + STS
+                  TextField(
+                    controller: _vidCtrl,
+                    decoration: const InputDecoration(labelText: 'VID', isDense: true),
+                  ),
+                  TextField(
+                    controller: _akIdCtrl,
+                    decoration: const InputDecoration(labelText: 'AccessKeyId', isDense: true),
+                  ),
+                  TextField(
+                    controller: _akSecretCtrl,
+                    decoration: const InputDecoration(labelText: 'AccessKeySecret', isDense: true),
+                  ),
+                  TextField(
+                    controller: _tokenCtrl,
+                    decoration: const InputDecoration(labelText: 'SecurityToken', isDense: true),
+                  ),
+                  ElevatedButton(
+                    key: const Key('btn_set_vid_sts'),
+                    onPressed: _setVidSts,
+                    child: const Text('设置VID+STS源'),
+                  ),
+                  const SizedBox(height: 8),
+                  // VID + Auth
+                  TextField(
+                    controller: _authCtrl,
+                    decoration: const InputDecoration(labelText: 'PlayAuth', isDense: true),
+                  ),
+                  ElevatedButton(
+                    key: const Key('btn_set_vid_auth'),
+                    onPressed: _setVidAuth,
+                    child: const Text('设置VID+Auth源'),
+                  ),
+                  const SizedBox(height: 8),
+                  // VID + MPS
+                  TextField(
+                    controller: _mpsCtrl,
+                    decoration: const InputDecoration(labelText: 'MPS配置', hintText: 'JSON格式', isDense: true),
+                  ),
+                  ElevatedButton(
+                    key: const Key('btn_set_vid_mps'),
+                    onPressed: _setVidMps,
+                    child: const Text('设置VID+MPS源'),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_prepare'),
+                    onPressed: _prepare,
+                    child: const Text('准备'),
+                  ),
                 ],
               ),
             ),

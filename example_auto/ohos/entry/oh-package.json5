@@ -6,9 +6,6 @@
   "main": "",
   "author": "",
   "license": "",
-  "dependencies": {
-    "premierlibrary": "file:../../../ohos/libs/premierlibrary.har",
-    "aliyunPlayerSharedCpplibrary": "file:../libs/aliyunPlayerSharedCpplibrary.har"
-  }
+  "dependencies": {},
 }
 

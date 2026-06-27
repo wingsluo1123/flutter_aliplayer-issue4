@@ -1,4 +1,3 @@
 
-
-import FlutterAliplayerPlugin from './src/main/ets/components/plugin/FlutterAliplayerPlugin';
+import FlutterAliplayerPlugin from './src/main/ets/FlutterAliplayerPlugin';
 export default FlutterAliplayerPlugin;

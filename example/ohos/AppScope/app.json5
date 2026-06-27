@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.aliyun.player.demo_ohos",
+    "bundleName": "com.alibaba.flutter_aliplayer_example",
     "vendor": "example",
     "versionCode": 1000000,
     "versionName": "1.0.0",

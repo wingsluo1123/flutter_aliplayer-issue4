@@ -1,14 +1,19 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-18：DRM 支持
+/// 测试用例列表（二级页）- F-18：媒体预加载V1/V2
 class ModuleF18Page extends StatelessWidget {
   const ModuleF18Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F18-001',
-      title: '填写 DRM 信息后可播放受保护内容',
+      title: '通过媒体预加载V1加载视频资源',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F18-002',
+      title: '通过媒体预加载V2添加URL任务',
       level: 'L0',
     ),
   ];
@@ -16,7 +21,7 @@ class ModuleF18Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-18 DRM 支持')),
+      appBar: AppBar(title: const Text('F-18 媒体预加载V1/V2')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

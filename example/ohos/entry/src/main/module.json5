@@ -34,17 +34,7 @@
       }
     ],
     "requestPermissions": [
-      {"name" :  "ohos.permission.INTERNET"}
-    ],
-    "metadata": [
-      {
-        "name": "com.aliyun.alivc_license.licensekey",
-        "value": "MoCTfuQ391Z01mNqG8f8786e23c8a457a8ff8d5faedc1040c"
-      },
-      {
-        "name": "com.aliyun.alivc_license.licensefile",
-        "value": "ohosLicense.crt"
-      }
+      {"name" :  "ohos.permission.INTERNET"},
     ]
   }
 }

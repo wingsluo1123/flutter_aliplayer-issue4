@@ -1,14 +1,14 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-10：截图与缩略图
+/// 测试用例列表（二级页）- F-10：截图
 class ModuleF10Page extends StatelessWidget {
   const ModuleF10Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F10-001',
-      title: '点击截图按钮后可生成截图保存记录',
+      title: '对播放中的视频进行截图',
       level: 'L0',
     ),
   ];
@@ -16,7 +16,7 @@ class ModuleF10Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-10 截图与缩略图')),
+      appBar: AppBar(title: const Text('F-10 截图')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

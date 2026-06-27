@@ -1,8 +1,10 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F01-002：列表播放器创建后可进入可操作状态
+
+/// 测试用例详情 - F01-002：创建播放器实例不指定标识
 class TestCaseF01002Page extends StatefulWidget {
   const TestCaseF01002Page({Key? key}) : super(key: key);
 
@@ -11,16 +13,49 @@ class TestCaseF01002Page extends StatefulWidget {
 }
 
 class _TestCaseF01002PageState extends State<TestCaseF01002Page> {
+  FlutterAliplayer? _player;
   String _result = '';
+  final TextEditingController _playerIdCtrl = TextEditingController();
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  Future<void> _createPlayer() async {
+    try {
+      String id = _playerIdCtrl.text.trim();
+      if (id.isEmpty) {
+        id = 'player_${DateTime.now().millisecondsSinceEpoch}';
+        _player = FlutterAliPlayerFactory.createAliPlayer();
+      } else {
+        _player = FlutterAliPlayerFactory.createAliPlayer(playerId: id);
+      }
+      setState(() { _result = '播放器已创建, playerId: ${_player!.playerId}'; });
+    } catch (e) {
+      setState(() { _result = '创建播放器失败: $e'; });
+    }
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  Future<void> _release() async {
+    if (_player == null) {
+      setState(() { _result = '请先创建播放器'; });
+      return;
+    }
+    try {
+      await _player!.release();
+      setState(() { _result = '播放器已释放'; _player = null; });
+    } catch (e) {
+      setState(() { _result = '释放失败: $e'; });
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    _playerIdCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F01-002 列表播放器创建后可进入可操作状态')),
+      appBar: AppBar(title: const Text('F01-002 创建播放器实例不指定标识')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -30,77 +65,51 @@ class _TestCaseF01002PageState extends State<TestCaseF01002Page> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  const Text(
-                    '测试信息',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('优先级: L0'),
+                          Text('前置条件: 应用已启动，进入播放器演示页面'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动并停留在阿里云播放器 Demo 首页。'),
+                          Text('测试步骤: 清空【播放器ID】输入框，点击【创建播放器】按钮 (API: FlutterAliplayer.init, id: null)'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【列表播放器】页签，点击【创建列表播放器】按钮 (API: createAliListPlayer) [验证点: 验证页面出现创建成功提示，列表播放控制区域可见。]; 2. 点击【加载默认列表】按钮 [验证点: 验证【播放列表】区域出现至少 1 条资源记录。]; 3. 点击任意一条播放列表记录 [验证点: 验证该记录高亮显示，当前资源进入可播放状态。]'),
-                          const SizedBox(height: 4),
-                          Text('预期结果: 列表播放器可创建完成，并能够接管播放列表中的资源。'),
-                          const SizedBox(height: 4),
-                          Text('后置条件: '),
+                          Text('预期结果: 播放器实例成功创建，系统自动生成了playerId'),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          key: const Key('input_player_id'),
+                          controller: _playerIdCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '播放器ID',
+                            hintText: '留空自动生成',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    key: const Key('btn_create_player'),
+                    onPressed: _createPlayer,
+                    child: const Text('创建播放器'),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  ElevatedButton(
+                    key: const Key('btn_release'),
+                    onPressed: _release,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red[100]),
+                    child: const Text('释放播放器'),
+                  ),
                 ],
               ),
             ),

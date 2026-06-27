@@ -1,19 +1,74 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-04：视频渲染
+/// 测试用例列表（二级页）- F-04：播放事件回调
 class ModuleF04Page extends StatelessWidget {
   const ModuleF04Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F04-001',
-      title: '切换缩放和旋转模式后画面展示同步变化',
+      title: '准备完成事件回调',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F04-002',
-      title: '镜像和背景色切换后渲染样式即时刷新',
+      title: '首帧显示事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-003',
+      title: '视频大小变化事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-004',
+      title: 'seek完成事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-005',
+      title: '播放错误事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-006',
+      title: '缓冲开始事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-007',
+      title: '缓冲进度事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-008',
+      title: '缓冲结束事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-009',
+      title: '播放完成事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-010',
+      title: '播放状态变更事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-011',
+      title: '播放器信息事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-012',
+      title: 'SEI数据事件回调',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-013',
+      title: '视频渲染事件回调',
       level: 'L0',
     ),
   ];
@@ -21,7 +76,7 @@ class ModuleF04Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-04 视频渲染')),
+      appBar: AppBar(title: const Text('F-04 播放事件回调')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

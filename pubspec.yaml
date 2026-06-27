@@ -33,7 +33,6 @@ flutter:
       ios:
         pluginClass: FlutterAliplayerPlugin
       ohos:
-        package: com.alibaba.fplayer.flutter_aliplayer
         pluginClass: FlutterAliplayerPlugin
 
   # To add assets to your plugin package, add an assets section, like this:

@@ -1,8 +1,10 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F05-001：拖动音量并切换静音后声音状态正确变化
+
+/// 测试用例详情 - F05-001：设置视频保持比例黑边填充模式
 class TestCaseF05001Page extends StatefulWidget {
   const TestCaseF05001Page({Key? key}) : super(key: key);
 
@@ -11,16 +13,85 @@ class TestCaseF05001Page extends StatefulWidget {
 }
 
 class _TestCaseF05001PageState extends State<TestCaseF05001Page> {
+  FlutterAliplayer? _player;
   String _result = '';
+  int _scalingMode = 2; // SCALE_ASPECT_FIT
+  int _rotateMode = 0;
+  int _mirrorMode = 0;
+  final TextEditingController _urlCtrl = TextEditingController();
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _createPlayer();
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  Future<void> _createPlayer() async {
+    try {
+      _player = FlutterAliPlayerFactory.createAliPlayer();
+      await _player!.create();
+      setState(() { _result = '播放器已创建'; });
+    } catch (e) { setState(() { _result = '创建失败: $e'; }); }
+  }
+
+  Future<void> _setUrl() async {
+    final url = _urlCtrl.text.trim();
+    if (url.isEmpty) return;
+    try { await _player!.setUrl(url); setState(() { _result = 'URL已设置'; }); } catch (e) { setState(() { _result = '失败: $e'; }); }
+  }
+  Future<void> _prepare() async { try { await _player!.prepare(); setState(() { _result = '准备完成'; }); } catch (e) { setState(() { _result = '失败: $e'; }); } }
+  Future<void> _play() async { try { await _player!.play(); setState(() { _result = '播放中'; }); } catch (e) { setState(() { _result = '失败: $e'; }); } }
+
+  Future<void> _setScalingMode(int mode) async {
+    try { await _player!.setScalingMode(mode); setState(() { _scalingMode = mode; _result = '缩放模式已设置: $mode'; }); } catch (e) { setState(() { _result = '设置失败: $e'; }); }
+  }
+
+  Future<void> _setRotateMode(int mode) async {
+    try { await _player!.setRotateMode(mode); setState(() { _rotateMode = mode; _result = '旋转模式已设置: $mode'; }); } catch (e) { setState(() { _result = '设置失败: $e'; }); }
+  }
+
+  Future<void> _setMirrorMode(int mode) async {
+    try { await _player!.setMirrorMode(mode); setState(() { _mirrorMode = mode; _result = '镜像模式已设置: $mode'; }); } catch (e) { setState(() { _result = '设置失败: $e'; }); }
+  }
+
+  Future<void> _getScalingMode() async {
+    try { final v = await _player!.getScalingMode(); setState(() { _result = '当前缩放模式: $v'; }); } catch (e) { setState(() { _result = '获取失败: $e'; }); }
+  }
+  Future<void> _getRotateMode() async {
+    try { final v = await _player!.getRotateMode(); setState(() { _result = '当前旋转模式: $v'; }); } catch (e) { setState(() { _result = '获取失败: $e'; }); }
+  }
+  Future<void> _getMirrorMode() async {
+    try { final v = await _player!.getMirrorMode(); setState(() { _result = '当前镜像模式: $v'; }); } catch (e) { setState(() { _result = '获取失败: $e'; }); }
+  }
+  Future<void> _getVideoWidth() async {
+    try { final v = await _player!.getVideoWidth(); setState(() { _result = '视频宽度: $v'; }); } catch (e) { setState(() { _result = '获取失败: $e'; }); }
+  }
+  Future<void> _getVideoHeight() async {
+    try { final v = await _player!.getVideoHeight(); setState(() { _result = '视频高度: $v'; }); } catch (e) { setState(() { _result = '获取失败: $e'; }); }
+  }
+  Future<void> _getVideoRotation() async {
+    try { final v = await _player!.getVideoRotation(); setState(() { _result = '视频旋转角度: $v'; }); } catch (e) { setState(() { _result = '获取失败: $e'; }); }
+  }
+
+  Future<void> _setBackgroundColor() async {
+    try { await _player!.setVideoBackgroundColor(Colors.red.value); setState(() { _result = '背景色已设为红色'; }); } catch (e) { setState(() { _result = '设置失败: $e'; }); }
+  }
+
+  Future<void> _clearScreen() async {
+    try { await _player!.clearScreen(); setState(() { _result = '画面已清空'; }); } catch (e) { setState(() { _result = '清空失败: $e'; }); }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    _urlCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F05-001 拖动音量并切换静音后声音状态正确变化')),
+      appBar: AppBar(title: const Text('F05-001 设置视频保持比例黑边填充模式')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -30,77 +101,77 @@ class _TestCaseF05001PageState extends State<TestCaseF05001Page> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  const Text(
-                    '测试信息',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('优先级: L0'),
+                          Text('前置条件: 应用已启动，播放器正在播放视频'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器已成功起播；设备媒体音量可用。'),
-                          const SizedBox(height: 4),
-                          Text('测试步骤: 1. 在【音量控制】区域拖动【音量滑块】到中间位置 (API: setVolume) [验证点: 验证滑块右侧的数值文本更新为接近 1.00 的新值。]; 2. 点击【静音】图标按钮 (API: setMuted) [验证点: 验证图标切换为静音状态，视频声音消失。]; 3. 再次点击【静音】图标按钮 [验证点: 验证图标恢复为有声状态，视频声音重新出现。]'),
-                          const SizedBox(height: 4),
-                          Text('预期结果: 音量滑块与静音开关都能立即影响播放器的声音输出状态。'),
-                          const SizedBox(height: 4),
-                          Text('后置条件: '),
+                          Text('预期结果: 视频画面完整显示，两侧或上下有黑边'),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _urlCtrl,
+                    decoration: const InputDecoration(labelText: '视频URL', isDense: true),
+                  ),
+                  ElevatedButton(key: const Key('btn_set_url'), onPressed: _setUrl, child: const Text('设置URL')),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_prepare'), onPressed: _prepare, child: const Text('准备')),
+                      ElevatedButton(key: const Key('btn_play'), onPressed: _play, child: const Text('播放')),
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  const Text('缩放模式', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_scale_fit'), onPressed: () => _setScalingMode(2), child: const Text('保持比例(黑边)')),
+                      ElevatedButton(key: const Key('btn_scale_fill'), onPressed: () => _setScalingMode(3), child: const Text('保持比例(裁剪)')),
+                      ElevatedButton(key: const Key('btn_scale_fill_stretch'), onPressed: () => _setScalingMode(1), child: const Text('拉伸平铺')),
+                      ElevatedButton(key: const Key('btn_get_scaling'), onPressed: _getScalingMode, child: const Text('查询缩放模式')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('旋转模式', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_rotate_0'), onPressed: () => _setRotateMode(0), child: const Text('0度')),
+                      ElevatedButton(key: const Key('btn_rotate_90'), onPressed: () => _setRotateMode(90), child: const Text('90度')),
+                      ElevatedButton(key: const Key('btn_rotate_180'), onPressed: () => _setRotateMode(180), child: const Text('180度')),
+                      ElevatedButton(key: const Key('btn_rotate_270'), onPressed: () => _setRotateMode(270), child: const Text('270度')),
+                      ElevatedButton(key: const Key('btn_get_rotate'), onPressed: _getRotateMode, child: const Text('查询旋转模式')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('镜像模式', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_mirror_none'), onPressed: () => _setMirrorMode(0), child: const Text('无镜像')),
+                      ElevatedButton(key: const Key('btn_mirror_h'), onPressed: () => _setMirrorMode(1), child: const Text('水平镜像')),
+                      ElevatedButton(key: const Key('btn_mirror_v'), onPressed: () => _setMirrorMode(2), child: const Text('垂直镜像')),
+                      ElevatedButton(key: const Key('btn_get_mirror'), onPressed: _getMirrorMode, child: const Text('查询镜像模式')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_get_width'), onPressed: _getVideoWidth, child: const Text('获取视频宽度')),
+                      ElevatedButton(key: const Key('btn_get_height'), onPressed: _getVideoHeight, child: const Text('获取视频高度')),
+                      ElevatedButton(key: const Key('btn_get_rotation'), onPressed: _getVideoRotation, child: const Text('获取旋转角度')),
+                      ElevatedButton(key: const Key('btn_set_bg_red'), onPressed: _setBackgroundColor, child: const Text('设置红色背景')),
+                      ElevatedButton(key: const Key('btn_clear_screen'), onPressed: _clearScreen, child: const Text('清空画面')),
+                    ],
+                  ),
                 ],
               ),
             ),

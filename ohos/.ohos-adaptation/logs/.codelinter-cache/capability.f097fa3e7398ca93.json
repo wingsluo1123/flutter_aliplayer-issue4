@@ -1,0 +1,29 @@
+{
+  "by_rule": {
+    "cr-strict-equality": "codelinter",
+    "cr-no-assign-in-condition": "custom",
+    "cr-use-isnan": "custom",
+    "cr-one-var-per-line": "custom",
+    "cr-no-arguments": "custom",
+    "cr-no-finally-control": "custom",
+    "cr-naming-class": "codelinter",
+    "cr-magic-value": "codelinter",
+    "cr-array-method-traversal": "custom",
+    "cr-single-quote": "codelinter",
+    "cr-array-type-style": "codelinter",
+    "cr-line-width": "custom",
+    "cr-keyword-spacing": "codelinter",
+    "cr-dot-notation": "custom"
+  },
+  "fired": [
+    "eqeqeq",
+    "@typescript-eslint/no-magic-numbers",
+    "@typescript-eslint/naming-convention",
+    "@typescript-eslint/quotes",
+    "@typescript-eslint/array-type",
+    "@typescript-eslint/keyword-spacing"
+  ],
+  "verified_at": "2026-06-25T09:42:41.788Z",
+  "from_cache": false,
+  "selfcheck_ok": true
+}

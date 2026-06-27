@@ -1,8 +1,10 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F04-001：切换缩放和旋转模式后画面展示同步变化
+
+/// 测试用例详情 - F04-001：准备完成事件回调
 class TestCaseF04001Page extends StatefulWidget {
   const TestCaseF04001Page({Key? key}) : super(key: key);
 
@@ -11,96 +13,153 @@ class TestCaseF04001Page extends StatefulWidget {
 }
 
 class _TestCaseF04001PageState extends State<TestCaseF04001Page> {
+  FlutterAliplayer? _player;
   String _result = '';
+  final List<String> _eventLog = [];
+  final TextEditingController _urlCtrl = TextEditingController();
+  final TextEditingController _seekCtrl = TextEditingController();
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _createPlayer();
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  Future<void> _createPlayer() async {
+    try {
+      _player = FlutterAliPlayerFactory.createAliPlayer();
+      await _player!.create();
+      _registerCallbacks();
+      setState(() { _result = '播放器已创建，事件监听已注册'; });
+    } catch (e) { setState(() { _result = '创建失败: $e'; }); }
+  }
+
+  void _registerCallbacks() {
+    _player!.setOnPrepared((playerId) {
+      _logEvent('onPrepared', 'playerId: $playerId');
+    });
+    _player!.setOnRenderingStart((playerId) {
+      _logEvent('onRenderingStart', 'playerId: $playerId');
+    });
+    _player!.setOnVideoSizeChanged((width, height, rotation, playerId) {
+      _logEvent('onVideoSizeChanged', 'w:$width h:$height rot:$rotation');
+    });
+    _player!.setOnSeekComplete((playerId) {
+      _logEvent('onSeekComplete', 'playerId: $playerId');
+    });
+    _player!.setOnError((errorCode, errorExtra, errorMsg, playerId) {
+      _logEvent('onError', 'code:$errorCode msg:$errorMsg');
+    });
+    _player!.setOnCompletion((playerId) {
+      _logEvent('onCompletion', 'playerId: $playerId');
+    });
+    _player!.setOnStateChanged((newState, playerId) {
+      _logEvent('onStateChanged', 'state:$newState playerId:$playerId');
+    });
+    _player!.setOnLoadingStatusListener(
+      loadingBegin: (playerId) { _logEvent('onLoadingBegin', 'playerId: $playerId'); },
+      loadingProgress: (percent, netSpeed, playerId) { _logEvent('onLoadingProgress', '$percent% $netSpeed'); },
+      loadingEnd: (playerId) { _logEvent('onLoadingEnd', 'playerId: $playerId'); },
+    );
+    _player!.setOnVideoRendered((timeMs, pts, playerId) {
+      _logEvent('onVideoRendered', 'timeMs:$timeMs pts:$pts');
+    });
+    _player!.setOnInfo((infoCode, extraValue, extraMsg, playerId) {
+      _logEvent('onInfo', 'code:$infoCode val:$extraValue msg:$extraMsg');
+    });
+  }
+
+  void _logEvent(String event, String details) {
+    final log = '$event | $details';
+    _eventLog.insert(0, log);
+    setState(() { _result = '事件触发: $event'; });
+  }
+
+  Future<void> _setUrl() async {
+    final url = _urlCtrl.text.trim();
+    if (url.isEmpty) return;
+    try { await _player!.setUrl(url); setState(() { _result = 'URL已设置'; }); } catch (e) { setState(() { _result = '失败: $e'; }); }
+  }
+
+  Future<void> _prepare() async { try { await _player!.prepare(); setState(() { _result = '准备完成'; }); } catch (e) { setState(() { _result = '准备失败: $e'; }); } }
+  Future<void> _play() async { try { await _player!.play(); setState(() { _result = '播放中'; }); } catch (e) { setState(() { _result = '播放失败: $e'; }); } }
+  Future<void> _pause() async { try { await _player!.pause(); setState(() { _result = '已暂停'; }); } catch (e) { setState(() { _result = '暂停失败: $e'; }); } }
+  Future<void> _stop() async { try { await _player!.stop(); setState(() { _result = '已停止'; }); } catch (e) { setState(() { _result = '停止失败: $e'; }); } }
+  Future<void> _seek() async {
+    final pos = int.tryParse(_seekCtrl.text.trim()) ?? 0;
+    try { await _player!.seekTo(pos, 1); setState(() { _result = '跳转到: $pos ms'; }); } catch (e) { setState(() { _result = '跳转失败: $e'; }); }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    _urlCtrl.dispose(); _seekCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F04-001 切换缩放和旋转模式后画面展示同步变化')),
+      appBar: AppBar(title: const Text('F04-001 准备完成事件回调')),
       body: Column(
         children: <Widget>[
           Expanded(
-            flex: 3,
+            flex: 2,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  const Text(
-                    '测试信息',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('优先级: L0'),
+                          Text('前置条件: 应用已启动，播放器已创建，视频源已设置，已注册事件监听'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器已成功起播。'),
-                          const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【设置】页签，在【缩放模式】区域点击【填充】选项 (API: setScalingMode) [验证点: 验证【填充】选项进入选中状态，视频画面铺满可视区域。]; 2. 在【旋转模式】区域点击【90°】选项 (API: setRotateMode) [验证点: 验证【90°】选项进入选中状态，视频画面发生旋转。]; 3. 点击【适应】选项 [验证点: 验证画面比例恢复适应显示，旋转状态仍保持生效。]'),
-                          const SizedBox(height: 4),
-                          Text('预期结果: 渲染区域能够响应缩放和旋转切换，画面展示与所选模式一致。'),
-                          const SizedBox(height: 4),
-                          Text('后置条件: '),
+                          Text('预期结果: onPrepared回调被触发，传递的playerId与播放器一致'),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('input_url'),
+                    controller: _urlCtrl,
+                    decoration: const InputDecoration(labelText: '视频URL', isDense: true),
+                  ),
+                  ElevatedButton(key: const Key('btn_set_url'), onPressed: _setUrl, child: const Text('设置URL')),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ElevatedButton(key: const Key('btn_prepare'), onPressed: _prepare, child: const Text('准备')),
+                      ElevatedButton(key: const Key('btn_play'), onPressed: _play, child: const Text('播放')),
+                      ElevatedButton(key: const Key('btn_pause'), onPressed: _pause, child: const Text('暂停')),
+                      ElevatedButton(key: const Key('btn_stop'), onPressed: _stop, child: const Text('停止')),
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  Row(
+                    children: [
+                      SizedBox(width: 100, child: TextField(
+                        controller: _seekCtrl,
+                        decoration: const InputDecoration(labelText: '跳转(ms)', isDense: true),
+                      )),
+                      ElevatedButton(key: const Key('btn_seek'), onPressed: _seek, child: const Text('跳转')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('事件日志', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(
+                    height: 100,
+                    child: ListView.builder(
+                      reverse: true,
+                      itemCount: _eventLog.length,
+                      itemBuilder: (_, i) => Text(_eventLog[i], style: const TextStyle(fontSize: 11)),
+                    ),
+                  ),
                 ],
               ),
             ),
