@@ -1,0 +1,583 @@
+{
+  "$schema": "https://raw.githubusercontent.com/huawei-test-design-agent/schema/main/test-points.schema.json",
+  "pluginInfo": {
+    "name": "flutter_aliplayer",
+    "version": "7.15.0"
+  },
+  "modules": [
+    {
+      "moduleCode": "F-01",
+      "moduleName": "播放器实例与生命周期管理",
+      "priority": "P0",
+      "testPoints": [
+        {
+          "id": "F-01-01",
+          "testName": "创建单个播放器实例能成功初始化",
+          "level": "L0",
+          "description": "验证创建单个播放器实例能成功初始化",
+          "checkpoint": "实例对象不为空且可正常使用"
+        },
+        {
+          "id": "F-01-02",
+          "testName": "通过自定义 playerId 创建播放器实例",
+          "level": "L0",
+          "description": "验证通过自定义 playerId 创建播放器实例",
+          "checkpoint": "不同 playerId 对应独立实例且可区分"
+        },
+        {
+          "id": "F-01-03",
+          "testName": "释放播放器实例后资源被回收",
+          "level": "L0",
+          "description": "验证释放播放器实例后资源被回收",
+          "checkpoint": "释放后实例不可再用且无残留资源"
+        },
+        {
+          "id": "F-01-04",
+          "testName": "重复释放同一播放器实例不会导致应用崩溃",
+          "level": "L1",
+          "description": "验证重复释放同一播放器实例不会导致应用崩溃",
+          "checkpoint": "重复释放返回静默成功且应用继续运行"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-02",
+      "moduleName": "视频源设置",
+      "priority": "P0",
+      "testPoints": [
+        {
+          "id": "F-02-01",
+          "testName": "设置 HTTP URL 播放源能正常起播",
+          "level": "L0",
+          "description": "验证设置 HTTP URL 播放源能正常起播",
+          "checkpoint": "播放器进入 prepared 状态并开始播放"
+        },
+        {
+          "id": "F-02-02",
+          "testName": "设置 HTTPS URL 播放源能正常起播",
+          "level": "L0",
+          "description": "验证设置 HTTPS URL 播放源能正常起播",
+          "checkpoint": "播放器进入 prepared 状态并开始播放"
+        },
+        {
+          "id": "F-02-03",
+          "testName": "切换播放流地址能平滑切换到新流",
+          "level": "L0",
+          "description": "验证切换播放流地址能平滑切换到新流",
+          "checkpoint": "切换后播放新流内容且无中断崩溃"
+        },
+        {
+          "id": "F-02-04",
+          "testName": "设置无效 URL 能触发错误事件并保持稳定",
+          "level": "L1",
+          "description": "验证设置无效 URL 能触发错误事件并保持稳定",
+          "checkpoint": "错误事件回调被触发且播放器不崩溃"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-03",
+      "moduleName": "播放控制",
+      "priority": "P0",
+      "testPoints": [
+        {
+          "id": "F-03-01",
+          "testName": "准备播放器能进入可播放状态",
+          "level": "L0",
+          "description": "验证准备播放器能进入可播放状态",
+          "checkpoint": "onPrepared 事件触发且状态为 prepared"
+        },
+        {
+          "id": "F-03-02",
+          "testName": "开始播放能渲染视频画面",
+          "level": "L0",
+          "description": "验证开始播放能渲染视频画面",
+          "checkpoint": "onRenderingStart 事件触发且画面显示"
+        },
+        {
+          "id": "F-03-03",
+          "testName": "暂停播放能停止画面更新但保留当前帧",
+          "level": "L0",
+          "description": "验证暂停播放能停止画面更新但保留当前帧",
+          "checkpoint": "暂停后画面定格且 currentTime 不再增长"
+        },
+        {
+          "id": "F-03-04",
+          "testName": "停止播放能回到待播状态",
+          "level": "L0",
+          "description": "验证停止播放能回到待播状态",
+          "checkpoint": "停止后状态为 stopped 且可重新 prepare"
+        },
+        {
+          "id": "F-03-05",
+          "testName": "精准跳转到指定位置能定位到目标时间",
+          "level": "L0",
+          "description": "验证精准跳转到指定位置能定位到目标时间",
+          "checkpoint": "跳转后 currentTime 接近目标值且 onSeekComplete 触发"
+        },
+        {
+          "id": "F-03-06",
+          "testName": "跳转到越界位置能容错处理不崩溃",
+          "level": "L1",
+          "description": "验证跳转到越界位置能容错处理不崩溃",
+          "checkpoint": "越界跳转后不崩溃且回调正常触发"
+        },
+        {
+          "id": "F-03-07",
+          "testName": "重新加载网络流能恢复播放",
+          "level": "L1",
+          "description": "验证重新加载网络流能恢复播放",
+          "checkpoint": "reload 后能重新起播并播放当前流"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-04",
+      "moduleName": "视频渲染面",
+      "priority": "P0",
+      "testPoints": [
+        {
+          "id": "F-04-01",
+          "testName": "嵌入视频渲染面到界面能显示视频画面",
+          "level": "L0",
+          "description": "验证嵌入视频渲染面到界面能显示视频画面",
+          "checkpoint": "渲染面在界面正确显示且播放画面可见"
+        },
+        {
+          "id": "F-04-02",
+          "testName": "绑定渲染面与播放器能将画面渲染到指定区域",
+          "level": "L0",
+          "description": "验证绑定渲染面与播放器能将画面渲染到指定区域",
+          "checkpoint": "播放器输出画面到指定渲染面且位置正确"
+        },
+        {
+          "id": "F-04-03",
+          "testName": "切换渲染面类型能正常显示画面",
+          "level": "L0",
+          "description": "验证切换渲染面类型能正常显示画面",
+          "checkpoint": "三种 viewType 切换后画面均能正常显示"
+        },
+        {
+          "id": "F-04-04",
+          "testName": "全屏切换时渲染面能正确重建",
+          "level": "L1",
+          "description": "验证全屏切换时渲染面能正确重建",
+          "checkpoint": "切换全屏/窗口后画面不丢失且无黑屏"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-05",
+      "moduleName": "播放配置 AVPConfig",
+      "priority": "P1",
+      "testPoints": [
+        {
+          "id": "F-05-01",
+          "testName": "配置缓冲水位能影响起播与卡顿恢复行为",
+          "level": "L0",
+          "description": "验证配置缓冲水位能影响起播与卡顿恢复行为",
+          "checkpoint": "起播与卡顿恢复行为符合配置的缓冲水位"
+        },
+        {
+          "id": "F-05-02",
+          "testName": "配置 HTTP 头信息能在网络请求中生效",
+          "level": "L0",
+          "description": "验证配置 HTTP 头信息能在网络请求中生效",
+          "checkpoint": "网络请求包含配置的 HTTP 头"
+        },
+        {
+          "id": "F-05-03",
+          "testName": "配置无效缓冲值能容错处理不崩溃",
+          "level": "L2",
+          "description": "验证配置无效缓冲值能容错处理不崩溃",
+          "checkpoint": "无效值被静默忽略或使用默认值且不崩溃"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-06",
+      "moduleName": "轨道管理",
+      "priority": "P1",
+      "testPoints": [
+        {
+          "id": "F-06-01",
+          "testName": "查询媒体轨道信息能返回轨道列表",
+          "level": "L0",
+          "description": "验证查询媒体轨道信息能返回轨道列表",
+          "checkpoint": "返回的轨道列表包含 video/audio/subtitle 类型"
+        },
+        {
+          "id": "F-06-02",
+          "testName": "切换视频轨道能改变清晰度",
+          "level": "L0",
+          "description": "验证切换视频轨道能改变清晰度",
+          "checkpoint": "切换后播放画面清晰度变化且 OnTrackChanged 触发"
+        },
+        {
+          "id": "F-06-03",
+          "testName": "切换音频轨道能改变音轨语言",
+          "level": "L0",
+          "description": "验证切换音频轨道能改变音轨语言",
+          "checkpoint": "切换后播放音轨对应所选轨道"
+        },
+        {
+          "id": "F-06-04",
+          "testName": "切换不存在的轨道能容错处理不崩溃",
+          "level": "L2",
+          "description": "验证切换不存在的轨道能容错处理不崩溃",
+          "checkpoint": "不存在轨道被拒绝或忽略且不崩溃"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-07",
+      "moduleName": "字幕",
+      "priority": "P1",
+      "testPoints": [
+        {
+          "id": "F-07-01",
+          "testName": "添加外挂字幕能加载字幕文件",
+          "level": "L0",
+          "description": "验证添加外挂字幕能加载字幕文件",
+          "checkpoint": "OnSubtitleExtAdded 回调触发且字幕轨可用"
+        },
+        {
+          "id": "F-07-02",
+          "testName": "启用外挂字幕能在画面显示字幕内容",
+          "level": "L0",
+          "description": "验证启用外挂字幕能在画面显示字幕内容",
+          "checkpoint": "OnSubtitleShow 回调触发且画面显示字幕"
+        },
+        {
+          "id": "F-07-03",
+          "testName": "添加无效字幕地址能容错处理不崩溃",
+          "level": "L2",
+          "description": "验证添加无效字幕地址能容错处理不崩溃",
+          "checkpoint": "无效地址返回错误或静默忽略且不崩溃"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-08",
+      "moduleName": "截图与缩略图",
+      "priority": "P1",
+      "testPoints": [
+        {
+          "id": "F-08-01",
+          "testName": "截取当前播放帧能生成图片文件",
+          "level": "L0",
+          "description": "验证截取当前播放帧能生成图片文件",
+          "checkpoint": "OnSnapShot 回调触发且文件可被读取"
+        },
+        {
+          "id": "F-08-02",
+          "testName": "保存截图到指定路径能正确写入",
+          "level": "L0",
+          "description": "验证保存截图到指定路径能正确写入",
+          "checkpoint": "截图文件存在于指定路径且内容非空"
+        },
+        {
+          "id": "F-08-03",
+          "testName": "截图到无效路径能容错处理不崩溃",
+          "level": "L2",
+          "description": "验证截图到无效路径能容错处理不崩溃",
+          "checkpoint": "无效路径返回错误或静默忽略且不崩溃"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-09",
+      "moduleName": "渲染模式",
+      "priority": "P0",
+      "testPoints": [
+        {
+          "id": "F-09-01",
+          "testName": "设置等比缩放模式能保持画面比例不变形",
+          "level": "L0",
+          "description": "验证设置等比缩放模式能保持画面比例不变形",
+          "checkpoint": "画面等比缩放且无拉伸变形"
+        },
+        {
+          "id": "F-09-02",
+          "testName": "设置全屏缩放模式能填满渲染区域",
+          "level": "L0",
+          "description": "验证设置全屏缩放模式能填满渲染区域",
+          "checkpoint": "画面填满渲染区域可能裁剪"
+        },
+        {
+          "id": "F-09-03",
+          "testName": "设置 90 度旋转能使画面旋转",
+          "level": "L0",
+          "description": "验证设置 90 度旋转能使画面旋转",
+          "checkpoint": "画面按 90 度旋转显示"
+        },
+        {
+          "id": "F-09-04",
+          "testName": "设置水平镜像能使画面水平翻转",
+          "level": "L0",
+          "description": "验证设置水平镜像能使画面水平翻转",
+          "checkpoint": "画面水平翻转显示"
+        },
+        {
+          "id": "F-09-05",
+          "testName": "设置视频背景色能改变渲染区域底色",
+          "level": "L1",
+          "description": "验证设置视频背景色能改变渲染区域底色",
+          "checkpoint": "渲染区域底色为设置的背景色"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-10",
+      "moduleName": "音量/倍速/静音/循环/快启",
+      "priority": "P0",
+      "testPoints": [
+        {
+          "id": "F-10-01",
+          "testName": "调节音量能改变播放音量大小",
+          "level": "L0",
+          "description": "验证调节音量能改变播放音量大小",
+          "checkpoint": "音量随设置值变化且无爆音"
+        },
+        {
+          "id": "F-10-02",
+          "testName": "调节播放倍速能改变播放速度",
+          "level": "L0",
+          "description": "验证调节播放倍速能改变播放速度",
+          "checkpoint": "播放速度随设置值变化且画面/音频同步"
+        },
+        {
+          "id": "F-10-03",
+          "testName": "静音播放能关闭声音输出",
+          "level": "L0",
+          "description": "验证静音播放能关闭声音输出",
+          "checkpoint": "静音后无声音输出且画面正常"
+        },
+        {
+          "id": "F-10-04",
+          "testName": "开启循环播放能在结束后自动重播",
+          "level": "L0",
+          "description": "验证开启循环播放能在结束后自动重播",
+          "checkpoint": "播放结束后自动从头开始播放"
+        },
+        {
+          "id": "F-10-05",
+          "testName": "设置音量为越界值能容错处理不崩溃",
+          "level": "L1",
+          "description": "验证设置音量为越界值能容错处理不崩溃",
+          "checkpoint": "越界值被 clamp 或静默忽略且不崩溃"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-11",
+      "moduleName": "事件回调",
+      "priority": "P0",
+      "testPoints": [
+        {
+          "id": "F-11-01",
+          "testName": "准备完成事件能在 prepare 完成时触发",
+          "level": "L0",
+          "description": "验证准备完成事件能在 prepare 完成时触发",
+          "checkpoint": "onPrepared 回调被触发且字段正确"
+        },
+        {
+          "id": "F-11-02",
+          "testName": "渲染开始事件能在首帧渲染时触发",
+          "level": "L0",
+          "description": "验证渲染开始事件能在首帧渲染时触发",
+          "checkpoint": "onRenderingStart 回调被触发"
+        },
+        {
+          "id": "F-11-03",
+          "testName": "播放完成事件能在视频结束时触发",
+          "level": "L0",
+          "description": "验证播放完成事件能在视频结束时触发",
+          "checkpoint": "onCompletion 回调被触发"
+        },
+        {
+          "id": "F-11-04",
+          "testName": "播放错误事件能在播放异常时触发",
+          "level": "L0",
+          "description": "验证播放错误事件能在播放异常时触发",
+          "checkpoint": "onError 回调被触发且错误码字段正确"
+        },
+        {
+          "id": "F-11-05",
+          "testName": "视频尺寸变化事件能在画面尺寸变化时触发",
+          "level": "L0",
+          "description": "验证视频尺寸变化事件能在画面尺寸变化时触发",
+          "checkpoint": "onVideoSizeChanged 回调被触发且宽高字段正确"
+        },
+        {
+          "id": "F-11-06",
+          "testName": "缓冲状态变化事件能在卡顿/恢复时触发",
+          "level": "L1",
+          "description": "验证缓冲状态变化事件能在卡顿/恢复时触发",
+          "checkpoint": "onLoadingStatusListener 回调被触发且状态字段正确"
+        },
+        {
+          "id": "F-11-07",
+          "testName": "跳转完成事件能在 seek 完成时触发",
+          "level": "L1",
+          "description": "验证跳转完成事件能在 seek 完成时触发",
+          "checkpoint": "onSeekComplete 回调被触发"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-12",
+      "moduleName": "列表播放器",
+      "priority": "P1",
+      "testPoints": [
+        {
+          "id": "F-12-01",
+          "testName": "添加 URL 播放源到列表能成功加入列表",
+          "level": "L0",
+          "description": "验证添加 URL 播放源到列表能成功加入列表",
+          "checkpoint": "列表项数增加且 getCurrentUid 返回新项 uid"
+        },
+        {
+          "id": "F-12-02",
+          "testName": "切换到下一个播放源能播放下一项内容",
+          "level": "L0",
+          "description": "验证切换到下一个播放源能播放下一项内容",
+          "checkpoint": "切换后播放下一项内容且列表指针前移"
+        },
+        {
+          "id": "F-12-03",
+          "testName": "切换到上一个播放源能播放上一项内容",
+          "level": "L0",
+          "description": "验证切换到上一个播放源能播放上一项内容",
+          "checkpoint": "切换后播放上一项内容且列表指针后移"
+        },
+        {
+          "id": "F-12-04",
+          "testName": "跳转到不存在的列表项能容错处理不崩溃",
+          "level": "L2",
+          "description": "验证跳转到不存在的列表项能容错处理不崩溃",
+          "checkpoint": "不存在项被拒绝或忽略且不崩溃"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-13",
+      "moduleName": "直播时移播放器",
+      "priority": "P2",
+      "testPoints": [
+        {
+          "id": "F-13-01",
+          "testName": "设置时移数据源能加载时移流",
+          "level": "L0",
+          "description": "验证设置时移数据源能加载时移流",
+          "checkpoint": "时移流加载成功且可播放"
+        },
+        {
+          "id": "F-13-02",
+          "testName": "查询当前直播时间能返回现实时间",
+          "level": "L0",
+          "description": "验证查询当前直播时间能返回现实时间",
+          "checkpoint": "返回的 liveTime 为非零时间值"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-14",
+      "moduleName": "视频下载",
+      "priority": "P2",
+      "testPoints": [
+        {
+          "id": "F-14-01",
+          "testName": "准备下载任务能获取可下载项信息",
+          "level": "L0",
+          "description": "验证准备下载任务能获取可下载项信息",
+          "checkpoint": "download_prepared 事件触发且返回可下载项"
+        },
+        {
+          "id": "F-14-02",
+          "testName": "开始下载视频能触发进度回调并最终完成",
+          "level": "L0",
+          "description": "验证开始下载视频能触发进度回调并最终完成",
+          "checkpoint": "download_progress 与 download_completion 事件触发且文件生成"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-15",
+      "moduleName": "媒体预加载",
+      "priority": "P2",
+      "testPoints": [
+        {
+          "id": "F-15-01",
+          "testName": "添加预加载任务能开始预取媒体数据",
+          "level": "L0",
+          "description": "验证添加预加载任务能开始预取媒体数据",
+          "checkpoint": "任务进入预加载中状态且回调触发"
+        },
+        {
+          "id": "F-15-02",
+          "testName": "取消预加载任务能停止预取并触发回调",
+          "level": "L0",
+          "description": "验证取消预加载任务能停止预取并触发回调",
+          "checkpoint": "onCancel 回调触发且任务终止"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-16",
+      "moduleName": "全局设置",
+      "priority": "P2",
+      "testPoints": [
+        {
+          "id": "F-16-01",
+          "testName": "设置系统亮度能改变屏幕亮度",
+          "level": "L0",
+          "description": "验证设置系统亮度能改变屏幕亮度",
+          "checkpoint": "屏幕亮度随设置值变化"
+        },
+        {
+          "id": "F-16-02",
+          "testName": "查询系统亮度能返回当前亮度值",
+          "level": "L0",
+          "description": "验证查询系统亮度能返回当前亮度值",
+          "checkpoint": "返回的亮度值与实际屏幕亮度一致"
+        }
+      ]
+    },
+    {
+      "moduleCode": "F-17",
+      "moduleName": "全局播放器设置",
+      "priority": "P2",
+      "testPoints": [
+        {
+          "id": "F-17-01",
+          "testName": "查询 SDK 版本号能返回非空版本字符串",
+          "level": "L0",
+          "description": "验证查询 SDK 版本号能返回非空版本字符串",
+          "checkpoint": "返回的版本字符串非空且格式合理"
+        },
+        {
+          "id": "F-17-02",
+          "testName": "开启控制台日志能在控制台看到播放器日志",
+          "level": "L0",
+          "description": "验证开启控制台日志能在控制台看到播放器日志",
+          "checkpoint": "控制台输出播放器相关日志"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalModules": 17,
+    "totalTestPoints": 63,
+    "levelDistribution": {
+      "L0": 49,
+      "L1": 9,
+      "L2": 5
+    },
+    "levelPercentage": {
+      "L0": "77.8%",
+      "L1": "14.3%",
+      "L2": "7.9%"
+    }
+  }
+}

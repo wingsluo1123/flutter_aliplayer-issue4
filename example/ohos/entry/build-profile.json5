@@ -1,11 +1,7 @@
+
 {
-  "apiType": "stageMode",
+  "apiType": 'stageMode',
   "buildOption": {
-    "externalNativeOptions": {
-      "path": "./src/main/cpp",
-      "arguments": "",
-      "cppFlags": ""
-    }
   },
   "targets": [
     {
@@ -13,7 +9,7 @@
       "runtimeOS": "HarmonyOS"
     },
     {
-      "name": "ohosTest"
+      "name": "ohosTest",
     }
   ]
 }

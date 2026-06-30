@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_alilistplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F12-001：尝试开启悬浮窗时会给出明确的降级提示
+/// 测试用例详情（三级页）- F12-001：能添加 URL 播放源到列表并成功加入
 class TestCaseF12001Page extends StatefulWidget {
   const TestCaseF12001Page({Key? key}) : super(key: key);
 
@@ -12,17 +14,79 @@ class TestCaseF12001Page extends StatefulWidget {
 
 class _TestCaseF12001PageState extends State<TestCaseF12001Page> {
   String _result = '';
+  final TextEditingController _urlController = TextEditingController(
+    text:
+        'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8',
+  );
+  late final FlutterAliListPlayer _listPlayer;
+  final List<Map<String, String>> _sourceList = <Map<String, String>>[];
+  int _uidSeq = 0;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _listPlayer = FlutterAliPlayerFactory.createAliListPlayer(playerId: 'f12_001');
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  @override
+  void dispose() {
+    _listPlayer.release();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addToList() async {
+    final String url = _urlController.text.trim();
+    if (url.isEmpty) {
+      setState(() {
+        _result = '请输入 URL';
+      });
+      return;
+    }
+    _uidSeq += 1;
+    final String uid = 'uid_$_uidSeq';
+    try {
+      await _listPlayer.addUrlSource(url: url, uid: uid);
+      _sourceList.add(<String, String>{'uid': uid, 'url': url});
+      final dynamic currentUid = await _listPlayer.getCurrentUid();
+      final StringBuffer sb = StringBuffer();
+      sb.writeln('addUrlSource 调用成功');
+      sb.writeln('本次添加 uid: $uid');
+      sb.writeln('当前列表项数: ${_sourceList.length}');
+      sb.writeln('getCurrentUid: ${currentUid?.toString() ?? 'null'}');
+      sb.writeln('---- 播放列表 ----');
+      for (int i = 0; i < _sourceList.length; i++) {
+        sb.writeln('${i + 1}. ${_sourceList[i]['uid']} -> ${_sourceList[i]['url']}');
+      }
+      setState(() {
+        _result = sb.toString();
+      });
+    } catch (e) {
+      setState(() {
+        _result = 'error: $e';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F12-001 尝试开启悬浮窗时会给出明确的降级提示')),
+      appBar: AppBar(title: const Text('F12-001 能添加 URL 播放源到列表并成功加入')),
       body: Column(
         children: <Widget>[
+          SizedBox(
+            height: 200,
+            width: double.infinity,
+            child: AliPlayerView(
+              onCreated: (int viewId) {
+                _listPlayer.setPlayerView(viewId);
+              },
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +107,11 @@ class _TestCaseF12001PageState extends State<TestCaseF12001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；测试版本包含【悬浮窗播放】演示入口。'),
+                          Text('前置条件: 应用已启动；列表播放器演示页面已打开；有多个可用的 URL 播放源'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 打开【悬浮窗播放】演示区域，点击【悬浮窗播放】按钮 (API: showFloatViewForAndroid) [验证点: 验证页面出现当前平台不支持悬浮窗或等价提示。]; 2. 观察当前视频区域 [验证点: 验证主界面的播放状态保持不变，没有出现异常中断。]; 3. 关闭提示并再次观察控制区域 [验证点: 验证页面仍可继续进行普通播放操作。]'),
+                          Text('测试步骤: 1. 在【URL 输入框】中输入第一个 URL 后点击【添加到列表】按钮 (API: addUrlSource, url: URL1) [验证点: 验证【播放列表】中出现第一个条目]; 2. 重复操作添加第二个 URL (API: addUrlSource, url: URL2) [验证点: 验证【播放列表】中出现第二个条目且 getCurrentUid 返回新项 uid]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 当设备不支持悬浮窗能力时，应用会明确告知用户并保持普通播放链路可用。'),
+                          Text('预期结果: 添加 URL 播放源后列表项数增加，getCurrentUid 返回新项 uid'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +124,21 @@ class _TestCaseF12001PageState extends State<TestCaseF12001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_url'),
+                    controller: _urlController,
+                    decoration: const InputDecoration(
+                      labelText: 'URL 输入框',
+                      hintText: '请输入播放源 URL',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_add_to_list'),
+                    onPressed: _addToList,
+                    child: const Text('添加到列表'),
+                  ),
                 ],
               ),
             ),

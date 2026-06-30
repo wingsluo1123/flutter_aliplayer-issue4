@@ -1,0 +1,111 @@
+{
+  "plugin_name": "flutter_aliplayer",
+  "plugin_version": "7.15.0",
+  "description": "阿里云播放器 Flutter 插件,基于 Aliyun Player SDK(独立 SDK / 音视频终端 SDK)封装,提供点播/直播/短视频列表/直播时移等播放能力,以及视频下载、媒体预加载、画中画、外挂字幕、截图、缩略图、DRM、悬浮窗等功能。",
+  "plugin_type": "plugin_mixed",
+  "plugin_architecture": "standalone",
+  "quality_score": "C",
+  "complexity_assessment": {
+    "level": "very_high",
+    "adaptation_recommendation": "proceed_with_caution",
+    "risk_items": [
+      "核心依赖阿里云播放器原生 SDK(AliyunPlayer 7.15.0 / AliVCSDK),该 SDK 为闭源商用 SDK,无 HarmonyOS 版本,无法直接复用;需使用 HarmonyOS Media Kit 的 AVPlayer(@ohos.multimedia.media)重新实现播放内核,工作量大且能力映射不完整",
+      "Aliyun VOD 生态数据源(VidSts/VidAuth/VidMps)与阿里云鉴权体系强绑定,HarmonyOS AVPlayer 仅支持 url(fd:///http/https/HLS)与 MediaSource,无法直接播放 vid;需由应用层自行将 vid+sts/auth 解析为可播放 URL 后再交给 AVPlayer",
+      "ARTC/RTS 超低延时直播协议依赖 Aliyun RtsSDK(闭源 .so 库 System.loadLibrary(\"RtsSDK\")),HarmonyOS AVPlayer 不支持 ARTC 协议,该直播能力无法在鸿蒙侧直接适配",
+      "视频渲染使用 Android SurfaceView/TextureView/AliDisplayView + PlatformView(viewType: flutter_aliplayer_render_view),需改用 HarmonyOS XComponent(getXComponentSurfaceId + onSurfaceCreated/Changed/Destroyed)并将 surfaceId 传给 AVPlayer",
+      "大量平台特有能力无法对等映射:Android 悬浮窗(SYSTEM_ALERT_WINDOW)、iOS 画中画/AVAudioSession/FairPlay 证书、Aliyun 本地缓存/HttpDNS/IP 解析/http2/网络回调/降级/滤镜(sharp,sr)/黑名单硬件解码等,均为 SDK 私有能力",
+      "Channel 体系复杂:5 个 MethodChannel(plugins.flutter_aliplayer_factory / flutter_alidownload / flutter_aliplayer_media_loader / flutter_aliplayer_loader_v2 / flutter_global_setting)、4 个 EventChannel(flutter_aliplayer_event 等)、十余个按 playerId 拼接的 BasicMessageChannel(回调/双向通信),需在鸿蒙侧逐一对齐",
+      "Dart 侧通过 playerId 多实例管理 + EventChannel 广播分发,逻辑较重;事件回调约 30 种(onPrepared/onError/onTrackReady/onSubtitle 等),适配时需保证事件名与字段一一对应,否则回调错乱",
+      "下载器(FlutterAliDownloader)与媒体预加载(MediaLoader v1/v2)依赖 Aliyun SDK 内置下载与预加载能力,鸿蒙侧无对应开箱能力,需基于 @ohos.net.http 自行实现,且加密下载(initService 校验文件)无法复用",
+      "DRM 回调(setDrmCallback 的 requestProvision/requestKey)依赖 Aliyun SDK DRM 流程,鸿蒙侧 DRM 能力需改用 DRM Kit(@ohos.multimedia.drm)体系,接口模型不同",
+      "截图(snapshot)与缩略图(createThumbnailHelper/requestBitmapAtPosition)在鸿蒙侧需改用 AVImageGenerator(@ohos.multimedia.media)提取帧,接口形态与异步模型差异较大",
+      "无 example 工程,适配后需自建 example 验证;且 pubspec 仅声明 android/ios 平台,需新增 ohos 平台声明与 pluginClass",
+      "Dart 侧存在 Platform.isAndroid/isIOS 分支与 iOS 专有枚举(DocTypeForIOS/AliPlayerAudioSesstionType/EncryptionType.fairPlay),适配时需补充 Platform.isOhos 分支并对平台特有 API 做守卫或空实现"
+    ]
+  },
+  "channels": {
+    "method_channels": [
+      "plugins.flutter_aliplayer_factory (主通道:播放器创建/播控/配置/全局设置/悬浮窗)",
+      "plugins.flutter_alidownload (视频下载)",
+      "plugins.flutter_aliplayer_media_loader (媒体预加载 v1)",
+      "plugins.flutter_aliplayer_loader_v2 (媒体预加载 v2)",
+      "plugins.flutter_global_setting (全局设置:环境/亮度/网络回调等)"
+    ],
+    "event_channels": [
+      "flutter_aliplayer_event (播放器事件广播:onPrepared/onError/onTrackReady/onSubtitle 等)",
+      "plugins.flutter_alidownload_event (下载进度/完成/错误)",
+      "flutter_aliplayer_media_loader_event (预加载完成/取消/错误)",
+      "flutter_aliplayer_loader_v2_event (预加载 v2 任务事件)"
+    ],
+    "basic_message_channels": [
+      "aliPlayer_onPrepare{playerId} / aliPlayer_onRenderingStart{playerId} / aliPlayer_onStateChanged{playerId} (回调注册)",
+      "aliPlayer_onURLSourceExpiredListener{playerId} / aliPlayer_OnVidAuthExpiredListener{playerId} (鉴权过期双向回调)",
+      "requestProvision / requestKey (DRM 双向回调)",
+      "onPreRenderFrame / onRenderFrame / convertURL (渲染帧/URL 转换双向回调)",
+      "getUrlHashCallback / onNetworkDataProcess / getBackupUrlCallback (全局设置双向回调)",
+      "listPlayer_onPrepare{playerId} 等 (列表播放器回调变体)"
+    ],
+    "platform_views": [
+      "Android: viewType='flutter_aliplayer_render_view' (SurfaceView/TextureView/AliDisplayView)",
+      "iOS: viewType='plugins.flutter_aliplayer' (UIView 渲染)"
+    ]
+  },
+  "native_dependencies": {
+    "android": [
+      "com.aliyun.sdk.android:AliyunPlayer:7.15.0-full (阿里云播放器独立 SDK,闭源)",
+      "com.aliyun.sdk.android:AlivcArtc:7.15.0 (ARTC 直播组件)",
+      "com.aliyun.rts.android:RtsSDK:7.12.0 (RTS 超低延时直播 SDK,闭源 .so)",
+      "com.aliyun.aio:AliVCSDK_InteractiveLive:7.10.0 (可选:音视频终端 SDK)",
+      "com.google.code.gson:gson:2.10.1 (JSON 解析)"
+    ],
+    "ios": [
+      "AliPlayerSDK_iOS 7.15.0 (阿里云播放器独立 SDK,闭源 framework)",
+      "AliPlayerSDK_iOS_ARTC 7.15.0 (ARTC 直播组件)",
+      "RtsSDK 7.12.0 (RTS SDK)",
+      "AliVCSDK_InteractiveLive 7.10.0 (可选:音视频终端 SDK)",
+      "MJExtension (JSON-Model 转换)"
+    ]
+  },
+  "permissions": {
+    "android": [],
+    "ios": [],
+    "notes": "AndroidManifest 仅为空 manifest;网络/悬浮窗等权限由宿主 App 声明。HarmonyOS 适配需声明 ohos.permission.INTERNET(网络播放)。"
+  },
+  "example_status": "无 example 工程(仓库未包含 example 目录),适配后需自建 example 验证编译与功能",
+  "dart_entry_files": [
+    "lib/flutter_aliplayer.dart (FlutterAliplayer 主类 + AliPlayerView PlatformView Widget,约 1935 行)",
+    "lib/flutter_aliplayer_factory.dart (FlutterAliPlayerFactory 工厂 + 悬浮窗/Rts 库加载)",
+    "lib/flutter_alilistplayer.dart (FlutterAliListPlayer 列表播放器)",
+    "lib/flutter_aliliveshiftplayer.dart (FlutterAliLiveShiftPlayer 直播时移播放器)",
+    "lib/flutter_alidownloader.dart (FlutterAliDownloader 下载器)",
+    "lib/flutter_aliplayer_medialoader.dart (FlutterAliPlayerMediaLoader 预加载 v1)",
+    "lib/flutter_aliplayer_medialoader_v2.dart (FlutterAliMediaLoaderV2 预加载 v2)",
+    "lib/flutter_aliplayer_global_setting.dart (FlutterAliPlayerGlobalSettings 全局设置)",
+    "lib/flutter_avpdef.dart (常量/枚举/数据模型:AVPConfig/AVPTrackInfo/UrlSource/VidAuth/VidSts 等,约 1237 行)"
+  ],
+  "native_entry_files": {
+    "android": [
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliplayerPlugin.java (插件主类:PlatformViewFactory+FlutterPlugin+MethodCallHandler+EventChannel.StreamHandler)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliPlayer.java (播放器封装)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliListPlayer.java (列表播放器)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliLiveShiftPlayer.java (时移播放器)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliPlayerView.java (PlatformView:Surface/Texture 渲染)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliDownloader.java (下载器)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliMediaLoader.java / V2.java (预加载)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliPlayerGlobalSettings.java (全局设置)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/FlutterAliFloatWindowManager.java (悬浮窗)",
+      "android/src/main/java/com/alibaba/fplayer/flutter_aliplayer/AliChannelPool.java (BasicMessageChannel 池)"
+    ],
+    "ios": [
+      "ios/Classes/FlutterAliplayerPlugin.m (插件注册入口)",
+      "ios/Classes/AliPlayerFactory.h/.m (工厂 + PlatformView)",
+      "ios/Classes/AliPlayerProxy.h/.m (播放器代理)",
+      "ios/Classes/AliChannelPool.h/.m (Channel 池)",
+      "ios/Classes/FlutterAliPlayerView.h/.m (渲染视图)",
+      "ios/Classes/FlutterAliDownloaderPlugin.h/.m (下载器)",
+      "ios/Classes/FlutterAliMediaLoader.h/.m / V2.h/.m (预加载)",
+      "ios/Classes/FlutterAliPlayerGlobalSettings.h/.m (全局设置)",
+      "ios/Classes/NSDictionary+ext.h/.m (字典扩展)"
+    ]
+  }
+}

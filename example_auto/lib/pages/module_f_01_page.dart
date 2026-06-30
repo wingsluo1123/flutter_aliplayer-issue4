@@ -1,24 +1,24 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-01：播放器创建与管理
+/// 测试用例列表（二级页）- F-01：播放器实例与生命周期管理
 class ModuleF01Page extends StatelessWidget {
   const ModuleF01Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F01-001',
-      title: '单播放器创建后可完成视图绑定',
+      title: '能创建单个播放器实例并完成初始化',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F01-002',
-      title: '列表播放器创建后可进入可操作状态',
+      title: '能通过自定义 playerId 创建独立播放器实例',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F01-003',
-      title: '直播时移播放器销毁后可回到初始状态',
+      title: '能释放播放器实例并回收资源',
       level: 'L0',
     ),
   ];
@@ -26,7 +26,7 @@ class ModuleF01Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-01 播放器创建与管理')),
+      appBar: AppBar(title: const Text('F-01 播放器实例与生命周期管理')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

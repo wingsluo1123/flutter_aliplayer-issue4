@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F11-001：设备支持小窗播放时可进入画中画并保持播放
+/// 测试用例详情（三级页）- F11-001：能在 prepare 完成时触发准备完成事件
 class TestCaseF11001Page extends StatefulWidget {
   const TestCaseF11001Page({Key? key}) : super(key: key);
 
@@ -12,17 +14,71 @@ class TestCaseF11001Page extends StatefulWidget {
 
 class _TestCaseF11001PageState extends State<TestCaseF11001Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  bool _isViewCreated = false;
+  final List<String> _eventLog = <String>[];
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((String playerId) {
+      _addEvent('onPrepared: playerId=$playerId');
+    });
+    _player!.setOnError(
+        (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
+      _addEvent('onError: code=$errorCode, msg=$errorMsg, playerId=$playerId');
+    });
+  }
+
+  void _addEvent(String event) {
+    setState(() {
+      _eventLog.insert(
+          0, '${DateTime.now().toIso8601String().substring(11, 19)} $event');
+      _result = event;
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _player!.setPlayerView(viewId);
+    _player!.setUrl(_testUrl);
+    setState(() {
+      _isViewCreated = true;
+    });
+  }
+
+  Future<void> _prepare() async {
+    _addEvent('prepare() 已调用, 等待 onPrepared 回调...');
+    await _player!.prepare();
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F11-001 设备支持小窗播放时可进入画中画并保持播放')),
+      appBar: AppBar(title: const Text('F11-001 能在 prepare 完成时触发准备完成事件')),
       body: Column(
         children: <Widget>[
+          Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: 200,
+            child: AliPlayerView(
+              onCreated: _onViewCreated,
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +99,11 @@ class _TestCaseF11001PageState extends State<TestCaseF11001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；测试版本包含【画中画】演示区域；设备支持小窗播放能力。'),
+                          Text('前置条件: 应用已启动；播放器实例已创建；已设置播放源'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 打开【画中画】演示区域并点击【进入画中画】按钮 (API: startPictureInPicture) [验证点: 验证页面出现进入小窗播放的状态提示。]; 2. 返回桌面或切换到其他页面后观察小窗画面 [验证点: 验证小窗中的视频持续播放且画面可见。]; 3. 点击小窗中的【返回应用】入口 [验证点: 验证应用回到前台后仍保持原来的播放进度。]'),
+                          Text('测试步骤: 1. 点击【准备】按钮 (API: prepare) [验证点: 验证【事件日志】区域出现"onPrepared"事件条目]; 2. 查看【事件日志】中的 onPrepared 条目详情 [验证点: 验证回调字段正确且 playerId 与当前实例一致]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 在具备能力的设备上，播放器可以进入画中画并在返回应用后保持连续播放。'),
+                          Text('预期结果: prepare 完成后 onPrepared 回调触发，字段正确'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -56,51 +112,45 @@ class _TestCaseF11001PageState extends State<TestCaseF11001Page> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
+                    '事件日志',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 120,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: _eventLog.isEmpty
+                        ? const Center(
+                            child: Text('暂无事件',
+                                style: TextStyle(color: Colors.grey)))
+                        : ListView.builder(
+                            itemCount: _eventLog.length,
+                            itemBuilder: (BuildContext context, int index) {
+                              return ListTile(
+                                dense: true,
+                                title: Text(
+                                  _eventLog[index],
+                                  style: const TextStyle(
+                                      fontFamily: 'monospace', fontSize: 12),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
                     'Actions',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  ElevatedButton(
+                    key: const Key('btn_prepare'),
+                    onPressed: _isViewCreated ? _prepare : null,
+                    child: const Text('准备'),
+                  ),
                 ],
               ),
             ),

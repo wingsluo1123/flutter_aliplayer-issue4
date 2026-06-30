@@ -1,14 +1,29 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-10：截图与缩略图
+/// 测试用例列表（二级页）- F-10：音量/倍速/静音/循环/快启
 class ModuleF10Page extends StatelessWidget {
   const ModuleF10Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F10-001',
-      title: '点击截图按钮后可生成截图保存记录',
+      title: '能调节音量并改变播放音量大小',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F10-002',
+      title: '能调节播放倍速并改变播放速度',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F10-003',
+      title: '能静音播放并关闭声音输出',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F10-004',
+      title: '能开启循环播放并在结束后自动重播',
       level: 'L0',
     ),
   ];
@@ -16,7 +31,7 @@ class ModuleF10Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-10 截图与缩略图')),
+      appBar: AppBar(title: const Text('F-10 音量/倍速/静音/循环/快启')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

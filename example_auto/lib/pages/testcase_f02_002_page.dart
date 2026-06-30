@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F02-002：拖动进度条后可从指定位置继续播放
+/// 测试用例详情（三级页）- F02-002：能设置 HTTPS URL 播放源并正常起播
 class TestCaseF02002Page extends StatefulWidget {
   const TestCaseF02002Page({Key? key}) : super(key: key);
 
@@ -12,15 +14,99 @@ class TestCaseF02002Page extends StatefulWidget {
 
 class _TestCaseF02002PageState extends State<TestCaseF02002Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  String _statusText = '未创建';
+  static const String _defaultUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
+  late final TextEditingController _urlController;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _urlController = TextEditingController(text: _defaultUrl);
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((playerId) {
+      setState(() {
+        _statusText = '已准备';
+        _result = 'onPrepared 回调触发，HTTPS 播放源已准备完成，可正常起播';
+      });
+      _player!.play();
+    });
+    _player!.setOnRenderingStart((playerId) {
+      setState(() {
+        _statusText = '播放中';
+        _result = '首帧渲染完成，HTTPS 源已起播';
+      });
+    });
+    _player!.setOnError((code, extra, msg, playerId) {
+      setState(() {
+        _statusText = '错误';
+        _result = 'onError: [$code] $msg (playerId=$playerId)';
+      });
+    });
+    _player!.setOnLoadingStatusListener(
+      loadingBegin: (playerId) {
+        setState(() {
+          _statusText = '缓冲中';
+          _result = 'loadingBegin: 缓冲开始';
+        });
+      },
+      loadingProgress: (percent, netSpeed, playerId) {
+        setState(() {
+          _statusText = '缓冲中';
+          _result = 'loadingProgress: $percent%  网速: $netSpeed';
+        });
+      },
+      loadingEnd: (playerId) {
+        setState(() {
+          _statusText = '缓冲完成';
+          _result = 'loadingEnd: 缓冲结束';
+        });
+      },
+    );
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  void _onViewCreated(int viewId) {
+    _player?.setPlayerView(viewId);
+  }
+
+  Future<void> _setUrl() async {
+    final String url = _urlController.text.trim();
+    if (url.isEmpty) {
+      setState(() {
+        _result = 'URL 不能为空';
+      });
+      return;
+    }
+    try {
+      setState(() {
+        _statusText = '准备中';
+        _result = '正在设置 HTTPS 播放源: $url\n调用 setUrl + prepare';
+      });
+      await _player!.setUrl(url);
+      await _player!.prepare();
+      setState(() {
+        _result = '已调用 setUrl + prepare\nURL: $url\n等待 onPrepared 回调...';
+      });
+    } catch (e) {
+      setState(() {
+        _statusText = '错误';
+        _result = '设置播放源失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    _urlController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F02-002 拖动进度条后可从指定位置继续播放')),
+      appBar: AppBar(title: const Text('F02-002 能设置 HTTPS URL 播放源并正常起播')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -43,11 +129,11 @@ class _TestCaseF02002PageState extends State<TestCaseF02002Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器已开始播放，且视频总时长大于 0。'),
+                          Text('前置条件: 应用已启动；播放器实例已创建；网络可用；有可用的 HTTPS 视频源'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 按住视频区域下方的【播放进度条】并拖动到中间位置 (API: seekTo) [验证点: 验证当前位置时间文本跳转到接近中间位置。]; 2. 等待 1 秒 [验证点: 验证视频从新位置继续播放，日志出现跳转完成记录。]; 3. 再次拖动【播放进度条】到靠后位置 [验证点: 验证当前位置再次更新，画面内容发生明显变化。]'),
+                          Text('测试步骤: 1. 在【URL 输入框】中输入 HTTPS 视频地址 (API: setUrl, url: https://example.com/video.mp4) [验证点: 验证输入框显示完整 HTTPS 地址]; 2. 点击【设置播放源】按钮 (API: setUrl) [验证点: 验证【播放状态】文本显示"准备中"]; 3. 等待 3 秒 [验证点: 验证【播放状态】文本显示"已准备"]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 拖动进度条可以把播放位置切换到目标时间点，并保持连续播放。'),
+                          Text('预期结果: HTTPS URL 播放源设置后播放器进入 prepared 状态，可正常起播'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +146,37 @@ class _TestCaseF02002PageState extends State<TestCaseF02002Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  Container(
+                    key: const Key('player_container'),
+                    height: 200,
+                    color: Colors.black,
+                    child: _player != null
+                        ? AliPlayerView(
+                            onCreated: _onViewCreated,
+                            x: 0,
+                            y: 0,
+                            width: double.infinity,
+                            height: 200,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('input_url'),
+                    controller: _urlController,
+                    decoration: const InputDecoration(
+                      labelText: 'HTTPS URL',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('播放状态: $_statusText'),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_set_url'),
+                    onPressed: _setUrl,
+                    child: const Text('设置播放源'),
+                  ),
                 ],
               ),
             ),

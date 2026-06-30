@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F10-001：点击截图按钮后可生成截图保存记录
+/// 测试用例详情（三级页）- F10-001：能调节音量并改变播放音量大小
 class TestCaseF10001Page extends StatefulWidget {
   const TestCaseF10001Page({Key? key}) : super(key: key);
 
@@ -12,17 +14,78 @@ class TestCaseF10001Page extends StatefulWidget {
 
 class _TestCaseF10001PageState extends State<TestCaseF10001Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  double _volume = 1.0;
+  bool _isPrepared = false;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((String playerId) {
+      setState(() {
+        _isPrepared = true;
+        _result = 'onPrepared: playerId=$playerId';
+      });
+    });
+    _player!.setOnError(
+        (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
+      setState(() {
+        _result = 'onError: code=$errorCode, msg=$errorMsg, playerId=$playerId';
+      });
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _player!.setPlayerView(viewId);
+    _player!.setUrl(_testUrl);
+    _player!.prepare();
+  }
+
+  Future<void> _play() async {
+    await _player!.play();
+    setState(() {
+      _result = '播放中, 当前音量=${_volume.toStringAsFixed(2)}';
+    });
+  }
+
+  Future<void> _onVolumeChanged(double value) async {
+    setState(() {
+      _volume = value;
+    });
+    await _player!.setVolume(value);
+    setState(() {
+      _result = 'setVolume(${value.toStringAsFixed(2)}) 已调用, 当前音量=${_volume.toStringAsFixed(2)}';
+    });
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F10-001 点击截图按钮后可生成截图保存记录')),
+      appBar: AppBar(title: const Text('F10-001 能调节音量并改变播放音量大小')),
       body: Column(
         children: <Widget>[
+          Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: 200,
+            child: AliPlayerView(
+              onCreated: _onViewCreated,
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +106,11 @@ class _TestCaseF10001PageState extends State<TestCaseF10001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器已成功起播；应用具有写入自身文件目录的能力。'),
+                          Text('前置条件: 应用已启动；播放器正在播放视频'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【截图】图标按钮 (API: snapshot) [验证点: 验证日志区域新增截图保存相关记录。]; 2. 打开【日志】页签查看最新记录 [验证点: 验证日志中包含可识别的截图文件路径。]; 3. 返回视频区域继续观察播放 [验证点: 验证截图操作不会中断当前播放。]'),
+                          Text('测试步骤: 1. 拖动【音量滑块】到 0.5 位置 (API: setVolume, volume: 0.5) [验证点: 验证【音量滑块】位置在 0.5]; 2. 观察播放声音 [验证点: 验证播放音量较之前降低且无爆音]; 3. 拖动【音量滑块】到 1.0 位置 (API: setVolume, volume: 1.0) [验证点: 验证播放音量恢复正常]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 截图操作会生成明确的保存记录，并且不会影响当前视频播放。'),
+                          Text('预期结果: 音量随滑块设置值变化，无爆音'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +123,22 @@ class _TestCaseF10001PageState extends State<TestCaseF10001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  Text('音量: ${_volume.toStringAsFixed(2)}'),
+                  Slider(
+                    key: const Key('slider_volume'),
+                    value: _volume,
+                    min: 0.0,
+                    max: 1.0,
+                    divisions: 100,
+                    label: _volume.toStringAsFixed(2),
+                    onChanged: _isPrepared ? _onVolumeChanged : null,
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_play'),
+                    onPressed: _isPrepared ? _play : null,
+                    child: const Text('播放'),
+                  ),
                 ],
               ),
             ),

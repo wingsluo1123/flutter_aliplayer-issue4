@@ -1,7 +1,5 @@
 # flutter_aliplayer
 
-本项目基于[flutter_aliplayer](https://pub.dev/packages/flutter_aliplayer)修改，新增适配鸿蒙系统的相关功能，安卓及iOS版本未作改动。
-
 A new flutter plugin project , The project supports Android and iOS base on AliyunPlayerSDK
 [Android SDK URL](https://help.aliyun.com/document_detail/94328.html?spm=a2c4g.11186623.6.979.1d5c67b4gEmBvH)
 [iOS SDK URL](https://help.aliyun.com/document_detail/94428.html?spm=a2c4g.11186623.6.980.7fc22a88xOI4gc)

@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F07-001：播放关键事件会写入日志并与界面状态一致
+/// 测试用例详情（三级页）- F07-001：能添加外挂字幕并加载字幕文件
 class TestCaseF07001Page extends StatefulWidget {
   const TestCaseF07001Page({Key? key}) : super(key: key);
 
@@ -12,17 +14,92 @@ class TestCaseF07001Page extends StatefulWidget {
 
 class _TestCaseF07001PageState extends State<TestCaseF07001Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  bool _isPrepared = false;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  final TextEditingController _subtitleUrlCtrl =
+      TextEditingController(text: '');
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
+
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((String playerId) {
+      setState(() {
+        _isPrepared = true;
+        _result = '播放器已准备 (onPrepared 触发)\n可输入字幕 URL 后点击【添加字幕】';
+      });
+    });
+    _player!.setOnError(
+        (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
+      setState(() {
+        _result = '错误: [$errorCode] ${errorMsg ?? ''}';
+      });
+    });
+    _player!.setOnSubtitleExtAdded(
+        (int trackIndex, String url, String playerId) {
+      setState(() {
+        _result = '外挂字幕已添加 (OnSubtitleExtAdded 触发)\n'
+            'trackIndex: $trackIndex\n'
+            'url: $url';
+      });
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _player!.setPlayerView(viewId);
+    _player!.setUrl(_testUrl);
+    _player!.prepare();
+  }
+
+  Future<void> _addSubtitle() async {
+    final String url = _subtitleUrlCtrl.text.trim();
+    if (url.isEmpty) {
+      setState(() {
+        _result = '字幕 URL 不能为空';
+      });
+      return;
+    }
+    try {
+      await _player!.addExtSubtitle(url);
+      setState(() {
+        _result = 'addExtSubtitle 已调用\nurl: $url\n等待 OnSubtitleExtAdded 回调';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '添加字幕失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _subtitleUrlCtrl.dispose();
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F07-001 播放关键事件会写入日志并与界面状态一致')),
+      appBar: AppBar(title: const Text('F07-001 能添加外挂字幕并加载字幕文件')),
       body: Column(
         children: <Widget>[
+          Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: 200,
+            child: AliPlayerView(
+              onCreated: _onViewCreated,
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +120,11 @@ class _TestCaseF07001PageState extends State<TestCaseF07001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；【单播放器】页签已打开；可访问的视频地址已准备完成。'),
+                          Text('前置条件: 应用已启动；播放器正在播放；有可用的外挂字幕 URL'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【日志】页签，点击右上角【清空日志】按钮 [验证点: 验证日志内容被清空。]; 2. 返回【控制】页签并点击【播放】按钮 (API: onPrepared, onRenderingStart, onStateChanged) [验证点: 验证视频开始加载并进入播放流程。]; 3. 再次打开【日志】页签并观察最新记录 [验证点: 验证日志按顺序出现准备完成、首帧渲染和状态变化等事件内容。]'),
+                          Text('测试步骤: 1. 在【字幕 URL 输入框】中输入字幕文件地址 (API: addExtSubtitle, url: 字幕地址) [验证点: 验证输入框显示字幕地址]; 2. 点击【添加字幕】按钮 (API: addExtSubtitle) [验证点: 验证【字幕列表】中出现新字幕条目且 OnSubtitleExtAdded 回调触发]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 关键事件回调会被完整记录到日志中，且与界面呈现的播放状态一致。'),
+                          Text('预期结果: 添加外挂字幕后字幕轨可用，OnSubtitleExtAdded 回调触发'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +137,21 @@ class _TestCaseF07001PageState extends State<TestCaseF07001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_subtitle_url'),
+                    controller: _subtitleUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '字幕 URL',
+                      hintText: 'https://example.com/subtitle.srt',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    key: const Key('btn_add_subtitle'),
+                    onPressed: _isPrepared ? _addSubtitle : null,
+                    child: const Text('添加字幕'),
+                  ),
                 ],
               ),
             ),

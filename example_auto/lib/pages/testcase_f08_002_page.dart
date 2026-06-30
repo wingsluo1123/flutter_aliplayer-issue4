@@ -1,8 +1,12 @@
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F08-002：多码率视频可在自动与指定轨道间切换
+/// 测试用例详情（三级页）- F08-002：能保存截图到指定路径并正确写入
 class TestCaseF08002Page extends StatefulWidget {
   const TestCaseF08002Page({Key? key}) : super(key: key);
 
@@ -12,17 +16,97 @@ class TestCaseF08002Page extends StatefulWidget {
 
 class _TestCaseF08002PageState extends State<TestCaseF08002Page> {
   String _result = '';
+  FlutterAliplayer? _player;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  final TextEditingController _snapshotPathCtrl =
+      TextEditingController(text: 'snapshot.png');
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
+
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((String playerId) {
+      setState(() {
+        _result = '播放器已准备 (onPrepared 触发)';
+      });
+    });
+    _player!.setOnError(
+        (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
+      setState(() {
+        _result = '错误: [$errorCode] ${errorMsg ?? ''}';
+      });
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _player!.setPlayerView(viewId);
+    _player!.setUrl(_testUrl);
+    _player!.prepare();
+  }
+
+  Future<void> _checkFile() async {
+    final String path = _snapshotPathCtrl.text.trim();
+    if (path.isEmpty) {
+      setState(() {
+        _result = '截图路径不能为空';
+      });
+      return;
+    }
+    try {
+      final File file = File(path);
+      final bool exists = await file.exists();
+      if (!exists) {
+        setState(() {
+          _result = '文件检查结果:\n'
+              '路径: $path\n'
+              '状态: 文件不存在\n'
+              '(注: 鸿蒙侧截图为 P2 安全空实现, 不会生成文件)';
+        });
+        return;
+      }
+      final int size = await file.length();
+      setState(() {
+        _result = '文件检查结果:\n'
+            '路径: $path\n'
+            '存在: 是\n'
+            '大小: $size 字节\n'
+            '非空: ${size > 0 ? "是" : "否"}';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '文件检查失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _snapshotPathCtrl.dispose();
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F08-002 多码率视频可在自动与指定轨道间切换')),
+      appBar: AppBar(title: const Text('F08-002 能保存截图到指定路径并正确写入')),
       body: Column(
         children: <Widget>[
+          Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: 200,
+            child: AliPlayerView(
+              onCreated: _onViewCreated,
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +127,11 @@ class _TestCaseF08002PageState extends State<TestCaseF08002Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器正在播放包含多视频轨道的资源；页面已出现【清晰度切换】区域。'),
+                          Text('前置条件: 截图操作已完成；保存路径有效'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 在【清晰度切换】区域点击任意一个具体清晰度选项 (API: selectTrack) [验证点: 验证该清晰度选项进入选中状态，视频继续播放不中断。]; 2. 等待 2 秒观察画面 [验证点: 验证播放连续，日志出现切换到轨道的记录。]; 3. 点击【自动】选项 [验证点: 验证【自动】重新进入选中状态，视频仍保持播放。]'),
+                          Text('测试步骤: 1. 在文件管理器中打开截图保存目录 [验证点: 验证目录中存在截图文件]; 2. 查看截图文件属性 [验证点: 验证文件大小大于 0 且内容非空]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 播放器支持在自动码率和指定视频轨道之间平滑切换。'),
+                          Text('预期结果: 截图文件存在于指定路径且内容非空，可被其他应用读取'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +144,21 @@ class _TestCaseF08002PageState extends State<TestCaseF08002Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_snapshot_path'),
+                    controller: _snapshotPathCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '截图路径',
+                      hintText: 'snapshot.png',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    key: const Key('btn_check_file'),
+                    onPressed: _checkFile,
+                    child: const Text('检查文件'),
+                  ),
                 ],
               ),
             ),

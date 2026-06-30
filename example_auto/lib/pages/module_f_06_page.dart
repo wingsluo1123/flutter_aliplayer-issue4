@@ -1,14 +1,24 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-06：媒体信息获取
+/// 测试用例列表（二级页）- F-06：轨道管理
 class ModuleF06Page extends StatelessWidget {
   const ModuleF06Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F06-001',
-      title: '播放过程中可查看媒体信息并观察进度更新',
+      title: '能查询媒体轨道信息并返回轨道列表',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F06-002',
+      title: '能切换视频轨道并改变清晰度',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F06-003',
+      title: '能切换音频轨道并改变音轨语言',
       level: 'L0',
     ),
   ];
@@ -16,7 +26,7 @@ class ModuleF06Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-06 媒体信息获取')),
+      appBar: AppBar(title: const Text('F-06 轨道管理')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

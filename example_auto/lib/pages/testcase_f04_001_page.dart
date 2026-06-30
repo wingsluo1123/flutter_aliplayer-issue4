@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F04-001：切换缩放和旋转模式后画面展示同步变化
+/// 测试用例详情（三级页）- F04-001：能嵌入视频渲染面并显示视频画面
 class TestCaseF04001Page extends StatefulWidget {
   const TestCaseF04001Page({Key? key}) : super(key: key);
 
@@ -12,15 +14,80 @@ class TestCaseF04001Page extends StatefulWidget {
 
 class _TestCaseF04001PageState extends State<TestCaseF04001Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  String _statusText = '未创建';
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((playerId) {
+      setState(() {
+        _statusText = '已准备';
+        _result = 'onPrepared 回调触发，播放器已准备';
+      });
+      _player!.play();
+    });
+    _player!.setOnRenderingStart((playerId) {
+      setState(() {
+        _statusText = '画面可见';
+        _result = '首帧渲染完成，渲染面已显示视频画面';
+      });
+    });
+    _player!.setOnError((code, extra, msg, playerId) {
+      setState(() {
+        _statusText = '错误';
+        _result = 'onError: [$code] $msg (playerId=$playerId)';
+      });
+    });
+    _player!.setOnVideoSizeChanged((width, height, rotation, playerId) {
+      setState(() {
+        _result = '视频尺寸变化: ${width}x$height rotation=$rotation';
+      });
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _player?.setPlayerView(viewId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _result = '渲染面已挂载，viewId=$viewId';
+      });
+    });
+  }
+
+  Future<void> _play() async {
+    try {
+      setState(() {
+        _statusText = '准备中';
+        _result = '正在设置播放源并准备...';
+      });
+      await _player!.setUrl(_testUrl);
+      await _player!.prepare();
+      setState(() {
+        _result = '已调用 setUrl + prepare\n等待 onPrepared 后自动播放';
+      });
+    } catch (e) {
+      setState(() {
+        _statusText = '错误';
+        _result = '播放失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F04-001 切换缩放和旋转模式后画面展示同步变化')),
+      appBar: AppBar(title: const Text('F04-001 能嵌入视频渲染面并显示视频画面')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -43,11 +110,11 @@ class _TestCaseF04001PageState extends State<TestCaseF04001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器已成功起播。'),
+                          Text('前置条件: 应用已启动；播放器演示页面已打开'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【设置】页签，在【缩放模式】区域点击【填充】选项 (API: setScalingMode) [验证点: 验证【填充】选项进入选中状态，视频画面铺满可视区域。]; 2. 在【旋转模式】区域点击【90°】选项 (API: setRotateMode) [验证点: 验证【90°】选项进入选中状态，视频画面发生旋转。]; 3. 点击【适应】选项 [验证点: 验证画面比例恢复适应显示，旋转状态仍保持生效。]'),
+                          Text('测试步骤: 1. 进入【播放器演示】页面 [验证点: 验证页面显示【播放器容器】区域]; 2. 设置播放源后点击【播放】按钮 (API: play) [验证点: 验证【播放器容器】区域内显示视频画面]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 渲染区域能够响应缩放和旋转切换，画面展示与所选模式一致。'),
+                          Text('预期结果: 渲染面在页面正确显示，播放视频后画面可见'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +127,28 @@ class _TestCaseF04001PageState extends State<TestCaseF04001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  Container(
+                    key: const Key('player_container'),
+                    height: 200,
+                    color: Colors.black,
+                    child: _player != null
+                        ? AliPlayerView(
+                            onCreated: _onViewCreated,
+                            x: 0,
+                            y: 0,
+                            width: double.infinity,
+                            height: 200,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('渲染状态: $_statusText'),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_play'),
+                    onPressed: _play,
+                    child: const Text('播放'),
+                  ),
                 ],
               ),
             ),

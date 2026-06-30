@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F08-001：起播前选择默认带宽和分辨率后可保留用户选择
+/// 测试用例详情（三级页）- F08-001：能截取当前播放帧并生成图片文件
 class TestCaseF08001Page extends StatefulWidget {
   const TestCaseF08001Page({Key? key}) : super(key: key);
 
@@ -12,17 +14,113 @@ class TestCaseF08001Page extends StatefulWidget {
 
 class _TestCaseF08001PageState extends State<TestCaseF08001Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  bool _isPrepared = false;
+  bool _isPlaying = false;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  final TextEditingController _snapshotPathCtrl =
+      TextEditingController(text: 'snapshot.png');
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
+
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((String playerId) {
+      setState(() {
+        _isPrepared = true;
+        _result = '播放器已准备 (onPrepared 触发)\n点击【播放】开始播放后再截图';
+      });
+    });
+    _player!.setOnError(
+        (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
+      setState(() {
+        _result = '错误: [$errorCode] ${errorMsg ?? ''}';
+      });
+    });
+    _player!.setOnRenderingStart((String playerId) {
+      setState(() {
+        _isPlaying = true;
+        _result = '首帧渲染开始 (onRenderingStart)\n可点击【截图】截取当前帧';
+      });
+    });
+    _player!.setOnSnapShot((String path, String playerId) {
+      setState(() {
+        _result = '截图完成 (OnSnapShot 触发)\npath: $path\nplayerId: $playerId';
+      });
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _player!.setPlayerView(viewId);
+    _player!.setUrl(_testUrl);
+    _player!.prepare();
+  }
+
+  Future<void> _play() async {
+    try {
+      await _player!.play();
+      setState(() {
+        _result = '播放已触发 (play)\n等待首帧渲染后可截图';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '播放失败: $e';
+      });
+    }
+  }
+
+  Future<void> _snapshot() async {
+    final String path = _snapshotPathCtrl.text.trim();
+    if (path.isEmpty) {
+      setState(() {
+        _result = '截图路径不能为空';
+      });
+      return;
+    }
+    try {
+      setState(() {
+        _result = '截图中... (snapshot path=$path)';
+      });
+      await _player!.snapshot(path);
+      setState(() {
+        _result = 'snapshot 已调用\npath: $path\n等待 OnSnapShot 回调\n'
+            '(注: 鸿蒙侧截图为 P2 安全空实现, 回调可能不触发)';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '截图失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _snapshotPathCtrl.dispose();
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F08-001 起播前选择默认带宽和分辨率后可保留用户选择')),
+      appBar: AppBar(title: const Text('F08-001 能截取当前播放帧并生成图片文件')),
       body: Column(
         children: <Widget>[
+          Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: 200,
+            child: AliPlayerView(
+              onCreated: _onViewCreated,
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +141,11 @@ class _TestCaseF08001PageState extends State<TestCaseF08001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；【单播放器】页签已打开。'),
+                          Text('前置条件: 应用已启动；播放器正在播放视频；有可写的保存路径'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【设置】页签，在【默认带宽】区域点击【1Mbps】选项 (API: setDefaultBandWidth) [验证点: 验证【1Mbps】进入选中状态。]; 2. 在【默认分辨率】区域点击【720P】选项 (API: setDefaultResolution) [验证点: 验证【720P】进入选中状态。]; 3. 返回【控制】页签点击【播放】按钮 [验证点: 验证视频能够正常起播，且再次回到设置页时刚才的默认选项仍保持选中。]'),
+                          Text('测试步骤: 1. 在【截图路径输入框】中输入保存路径 (API: snapshot, path: 保存路径) [验证点: 验证输入框显示保存路径]; 2. 点击【截图】按钮 (API: snapshot) [验证点: 验证【截图状态】文本显示"截图中"]; 3. 等待 2 秒 [验证点: 验证 OnSnapShot 回调触发且【截图状态】显示"已完成"]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 默认带宽与默认分辨率可在起播前完成选择，并在起播后保持生效状态。'),
+                          Text('预期结果: 截图后 OnSnapShot 回调触发，图片文件生成成功'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +158,27 @@ class _TestCaseF08001PageState extends State<TestCaseF08001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_snapshot_path'),
+                    controller: _snapshotPathCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '截图路径',
+                      hintText: 'snapshot.png',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    key: const Key('btn_play'),
+                    onPressed: _isPrepared && !_isPlaying ? _play : null,
+                    child: const Text('播放'),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_snapshot'),
+                    onPressed: _isPlaying ? _snapshot : null,
+                    child: const Text('截图'),
+                  ),
                 ],
               ),
             ),

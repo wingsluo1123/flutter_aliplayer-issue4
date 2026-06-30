@@ -1,8 +1,11 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliliveshiftplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F13-001：输入 STS 信息后可准备并开始下载视频
+/// 测试用例详情（三级页）- F13-001：能设置时移数据源并加载时移流
 class TestCaseF13001Page extends StatefulWidget {
   const TestCaseF13001Page({Key? key}) : super(key: key);
 
@@ -12,17 +15,95 @@ class TestCaseF13001Page extends StatefulWidget {
 
 class _TestCaseF13001PageState extends State<TestCaseF13001Page> {
   String _result = '';
+  final TextEditingController _timelineUrlController = TextEditingController(
+    text:
+        'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8',
+  );
+  final TextEditingController _urlController = TextEditingController(
+    text:
+        'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8',
+  );
+  late final FlutterAliLiveShiftPlayer _liveShiftPlayer;
+  bool _dataSourceSet = false;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _liveShiftPlayer =
+        FlutterAliPlayerFactory.createAliLiveShiftPlayer(playerId: 'f13_001');
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  @override
+  void dispose() {
+    _liveShiftPlayer.release();
+    _timelineUrlController.dispose();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _setDataSource() async {
+    final String timelineUrl = _timelineUrlController.text.trim();
+    final String url = _urlController.text.trim();
+    if (timelineUrl.isEmpty || url.isEmpty) {
+      setState(() {
+        _result = '请输入 timelineUrl 与播放地址';
+      });
+      return;
+    }
+    setState(() {
+      _result = '时移状态: 加载中...\ntimeLineUrl: $timelineUrl\nurl: $url';
+    });
+    try {
+      await _liveShiftPlayer.setDataSource(timelineUrl, url);
+      _dataSourceSet = true;
+      setState(() {
+        _result = 'setDataSource 调用成功\n'
+            '时移状态: 已加载\n'
+            'timeLineUrl: $timelineUrl\n'
+            'url: $url\n'
+            '可点击【播放】按钮开始播放';
+      });
+    } catch (e) {
+      setState(() {
+        _result = 'error: $e';
+      });
+    }
+  }
+
+  Future<void> _play() async {
+    try {
+      await _liveShiftPlayer.play();
+      setState(() {
+        _result = 'play 调用成功\n'
+            '时移流已请求播放\n'
+            'dataSourceSet: $_dataSourceSet';
+      });
+    } catch (e) {
+      setState(() {
+        _result = 'error: $e';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F13-001 输入 STS 信息后可准备并开始下载视频')),
+      appBar: AppBar(title: const Text('F13-001 能设置时移数据源并加载时移流')),
       body: Column(
         children: <Widget>[
+          SizedBox(
+            height: 200,
+            width: double.infinity,
+            child: AliPlayerView(
+              onCreated: (int viewId) {
+                _liveShiftPlayer.setPlayerView(viewId);
+              },
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +124,11 @@ class _TestCaseF13001PageState extends State<TestCaseF13001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；【视频下载】页签已打开；有效的视频 ID 与 STS 临时凭证已经准备完成。'),
+                          Text('前置条件: 应用已启动；直播时移播放器实例已创建；有可用的时移数据源'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 在【视频ID】、【Region】、【AccessKeyId】、【AccessKeySecret】和【SecurityToken】输入框中填写有效信息 [验证点: 验证各输入框完整显示刚填写的内容。]; 2. 点击【准备下载】按钮 (API: prepare) [验证点: 验证【下载状态】区域显示准备中或准备完成。]; 3. 点击【开始下载】按钮 (API: start) [验证点: 验证进度条开始变化，状态文本更新为下载中或处理中。]'),
+                          Text('测试步骤: 1. 在【timelineUrl 输入框】中输入时间轴地址，在【url 输入框】中输入播放地址 (API: setDataSource, timeLineUrl: 时间轴, url: 播放地址) [验证点: 验证两个输入框分别显示对应地址]; 2. 点击【设置时移源】按钮 (API: setDataSource) [验证点: 验证【时移状态】文本显示"加载中"]; 3. 等待 3 秒后点击【播放】按钮 (API: play) [验证点: 验证时移流加载成功且可播放]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 下载器能够接收 STS 信息并启动下载流程，页面可持续反馈下载进度。'),
+                          Text('预期结果: 设置时移数据源后时移流加载成功，可正常播放'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +141,35 @@ class _TestCaseF13001PageState extends State<TestCaseF13001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_timeline_url'),
+                    controller: _timelineUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'timelineUrl 输入框',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('input_url'),
+                    controller: _urlController,
+                    decoration: const InputDecoration(
+                      labelText: 'url 输入框',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_set_datasource'),
+                    onPressed: _setDataSource,
+                    child: const Text('设置时移源'),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_play'),
+                    onPressed: _play,
+                    child: const Text('播放'),
+                  ),
                 ],
               ),
             ),

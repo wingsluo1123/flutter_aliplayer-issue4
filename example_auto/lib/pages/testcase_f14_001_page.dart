@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_alidownloader.dart';
+import 'package:flutter_aliplayer/flutter_avpdef.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F14-001：预加载设置区域会清晰提示当前平台能力状态
+/// 测试用例详情（三级页）- F14-001：能准备下载任务并获取可下载项信息
 class TestCaseF14001Page extends StatefulWidget {
   const TestCaseF14001Page({Key? key}) : super(key: key);
 
@@ -12,15 +14,71 @@ class TestCaseF14001Page extends StatefulWidget {
 
 class _TestCaseF14001PageState extends State<TestCaseF14001Page> {
   String _result = '';
+  final TextEditingController _vidController = TextEditingController(text: 'test_vid_001');
+  final TextEditingController _accessKeyIdController = TextEditingController(text: '');
+  final TextEditingController _accessKeySecretController = TextEditingController(text: '');
+  final TextEditingController _securityTokenController = TextEditingController(text: '');
+  late final FlutterAliDownloader _downloader;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _downloader = FlutterAliDownloader.init();
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  Future<void> _prepareDownload() async {
+    final String vid = _vidController.text.trim();
+    final String accessKeyId = _accessKeyIdController.text.trim();
+    final String accessKeySecret = _accessKeySecretController.text.trim();
+    final String securityToken = _securityTokenController.text.trim();
+    if (vid.isEmpty) {
+      setState(() {
+        _result = '请输入视频 ID (vid)';
+      });
+      return;
+    }
+    setState(() {
+      _result = '下载状态: 准备中...\n'
+          'type: ${FlutterAvpdef.DOWNLOADTYPE_STS}\n'
+          'vid: $vid';
+    });
+    try {
+      final dynamic res = await _downloader.prepare(
+        FlutterAvpdef.DOWNLOADTYPE_STS,
+        vid,
+        region: 'cn-shanghai',
+        accessKeyId: accessKeyId,
+        accessKeySecret: accessKeySecret,
+        securityToken: securityToken,
+      );
+      setState(() {
+        _result = 'prepare 调用成功\n'
+            '下载状态: 已准备\n'
+            'type: ${FlutterAvpdef.DOWNLOADTYPE_STS}\n'
+            'vid: $vid\n'
+            '返回结果: ${res?.toString() ?? 'null'}\n'
+            '等待 download_prepared 事件触发以获取可下载项列表';
+      });
+    } catch (e) {
+      setState(() {
+        _result = 'error: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _vidController.dispose();
+    _accessKeyIdController.dispose();
+    _accessKeySecretController.dispose();
+    _securityTokenController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F14-001 预加载设置区域会清晰提示当前平台能力状态')),
+      appBar: AppBar(title: const Text('F14-001 能准备下载任务并获取可下载项信息')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -43,11 +101,11 @@ class _TestCaseF14001PageState extends State<TestCaseF14001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；【列表播放器】页签已打开。'),
+                          Text('前置条件: 应用已启动；下载器演示页面已打开；有可用的视频源和凭证'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 观察【预加载设置】区域 [验证点: 验证页面明确显示当前平台的预加载能力提示。]; 2. 点击或展开【预加载个数】下拉框 [验证点: 验证该控件保持不可操作或不弹出可选项。]; 3. 继续观察下方播放列表区域 [验证点: 验证预加载设置不可操作时不影响播放列表的正常使用。]'),
+                          Text('测试步骤: 1. 在【vid 输入框】中输入视频 ID，在【凭证输入框】中输入凭证 (API: prepare, vid: 视频ID) [验证点: 验证输入框显示对应值]; 2. 点击【准备下载】按钮 (API: prepare) [验证点: 验证【下载状态】文本显示"准备中"]; 3. 等待 3 秒 [验证点: 验证 download_prepared 事件触发且返回可下载项列表]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 演示版本能够明确展示预加载能力状态，并保证不可用能力不会影响其他播放流程。'),
+                          Text('预期结果: 准备下载任务后 download_prepared 事件触发，返回可下载项列表'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +118,47 @@ class _TestCaseF14001PageState extends State<TestCaseF14001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_vid'),
+                    controller: _vidController,
+                    decoration: const InputDecoration(
+                      labelText: 'vid 输入框',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('input_access_key_id'),
+                    controller: _accessKeyIdController,
+                    decoration: const InputDecoration(
+                      labelText: 'accessKeyId 输入框',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('input_access_key_secret'),
+                    controller: _accessKeySecretController,
+                    decoration: const InputDecoration(
+                      labelText: 'accessKeySecret 输入框',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('input_security_token'),
+                    controller: _securityTokenController,
+                    decoration: const InputDecoration(
+                      labelText: 'securityToken 输入框',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_prepare_download'),
+                    onPressed: _prepareDownload,
+                    child: const Text('准备下载'),
+                  ),
                 ],
               ),
             ),

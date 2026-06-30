@@ -1,14 +1,19 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-05：音量控制
+/// 测试用例列表（二级页）- F-05：播放配置 AVPConfig
 class ModuleF05Page extends StatelessWidget {
   const ModuleF05Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F05-001',
-      title: '拖动音量并切换静音后声音状态正确变化',
+      title: '能配置缓冲水位并影响起播与卡顿恢复行为',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F05-002',
+      title: '能配置 HTTP 头信息并在网络请求中生效',
       level: 'L0',
     ),
   ];
@@ -16,7 +21,7 @@ class ModuleF05Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-05 音量控制')),
+      appBar: AppBar(title: const Text('F-05 播放配置 AVPConfig')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

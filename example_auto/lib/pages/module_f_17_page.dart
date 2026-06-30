@@ -1,14 +1,19 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-17：滤镜特效
+/// 测试用例列表（二级页）- F-17：全局播放器设置
 class ModuleF17Page extends StatelessWidget {
   const ModuleF17Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F17-001',
-      title: '启用滤镜后画面效果会立即变化',
+      title: '能查询 SDK 版本号并返回非空版本字符串',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F17-002',
+      title: '能开启控制台日志并在控制台看到播放器日志',
       level: 'L0',
     ),
   ];
@@ -16,7 +21,7 @@ class ModuleF17Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-17 滤镜特效')),
+      appBar: AppBar(title: const Text('F-17 全局播放器设置')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

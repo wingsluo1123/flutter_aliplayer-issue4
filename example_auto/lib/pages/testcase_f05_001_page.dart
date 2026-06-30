@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F05-001：拖动音量并切换静音后声音状态正确变化
+/// 测试用例详情（三级页）- F05-001：能配置缓冲水位并影响起播与卡顿恢复行为
 class TestCaseF05001Page extends StatefulWidget {
   const TestCaseF05001Page({Key? key}) : super(key: key);
 
@@ -12,17 +14,105 @@ class TestCaseF05001Page extends StatefulWidget {
 
 class _TestCaseF05001PageState extends State<TestCaseF05001Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  bool _isPrepared = false;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  final TextEditingController _startBufferCtrl =
+      TextEditingController(text: '1000');
+  final TextEditingController _maxBufferCtrl =
+      TextEditingController(text: '30000');
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
+
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((String playerId) {
+      setState(() {
+        _isPrepared = true;
+        _result = '播放器已准备 (onPrepared 触发)';
+      });
+    });
+    _player!.setOnError(
+        (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
+      setState(() {
+        _result = '错误: [$errorCode] ${errorMsg ?? ''}';
+      });
+    });
+    _player!.setOnRenderingStart((String playerId) {
+      setState(() {
+        _result = '首帧渲染开始 (onRenderingStart)';
+      });
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _player!.setPlayerView(viewId);
+    _player!.setUrl(_testUrl);
+    _player!.prepare();
+  }
+
+  Future<void> _applyConfig() async {
+    try {
+      final int startBuffer = int.tryParse(_startBufferCtrl.text) ?? 1000;
+      final int maxBuffer = int.tryParse(_maxBufferCtrl.text) ?? 30000;
+      final AVPConfig config = AVPConfig();
+      config.startBufferDuration = startBuffer;
+      config.maxBufferDuration = maxBuffer;
+      await _player!.setConfig(config.convertToMap());
+      setState(() {
+        _result = '已应用配置\n'
+            'startBufferDuration: $startBuffer ms\n'
+            'maxBufferDuration: $maxBuffer ms';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '应用配置失败: $e';
+      });
+    }
+  }
+
+  Future<void> _play() async {
+    try {
+      await _player!.play();
+      setState(() {
+        _result = '播放已触发 (play)\n当前缓冲配置影响起播与卡顿恢复行为';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '播放失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _startBufferCtrl.dispose();
+    _maxBufferCtrl.dispose();
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F05-001 拖动音量并切换静音后声音状态正确变化')),
+      appBar: AppBar(title: const Text('F05-001 能配置缓冲水位并影响起播与卡顿恢复行为')),
       body: Column(
         children: <Widget>[
+          Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: 200,
+            child: AliPlayerView(
+              onCreated: _onViewCreated,
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -43,11 +133,11 @@ class _TestCaseF05001PageState extends State<TestCaseF05001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器已成功起播；设备媒体音量可用。'),
+                          Text('前置条件: 应用已启动；播放器实例已创建；尚未设置播放源'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 在【音量控制】区域拖动【音量滑块】到中间位置 (API: setVolume) [验证点: 验证滑块右侧的数值文本更新为接近 1.00 的新值。]; 2. 点击【静音】图标按钮 (API: setMuted) [验证点: 验证图标切换为静音状态，视频声音消失。]; 3. 再次点击【静音】图标按钮 [验证点: 验证图标恢复为有声状态，视频声音重新出现。]'),
+                          Text('测试步骤: 1. 在【起始缓冲】输入框中输入"1000" (API: setConfig, startBuffer: 1000) [验证点: 验证输入框显示"1000"]; 2. 在【最大缓冲】输入框中输入"30000"后点击【应用配置】按钮 (API: setConfig, maxBuffer: 30000) [验证点: 验证【配置状态】文本显示"已应用"]; 3. 设置播放源后点击【播放】按钮 (API: play) [验证点: 验证起播速度与卡顿恢复行为符合配置]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 音量滑块与静音开关都能立即影响播放器的声音输出状态。'),
+                          Text('预期结果: 缓冲水位配置生效，起播与卡顿恢复行为符合配置值'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +150,39 @@ class _TestCaseF05001PageState extends State<TestCaseF05001Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_start_buffer'),
+                    controller: _startBufferCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '起始缓冲 (ms)',
+                      hintText: '1000',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('input_max_buffer'),
+                    controller: _maxBufferCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '最大缓冲 (ms)',
+                      hintText: '30000',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    key: const Key('btn_apply_config'),
+                    onPressed: _applyConfig,
+                    child: const Text('应用配置'),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_play'),
+                    onPressed: _isPrepared ? _play : null,
+                    child: const Text('播放'),
+                  ),
                 ],
               ),
             ),

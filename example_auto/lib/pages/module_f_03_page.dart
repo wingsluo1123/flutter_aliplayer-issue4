@@ -1,24 +1,34 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-03：播放源设置
+/// 测试用例列表（二级页）- F-03：播放控制
 class ModuleF03Page extends StatelessWidget {
   const ModuleF03Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F03-001',
-      title: '输入 URL 后可直接完成单视频起播',
+      title: '能准备播放器进入可播放状态',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F03-002',
-      title: '自定义资源可加入列表并被点选播放',
+      title: '能开始播放并渲染视频画面',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F03-003',
-      title: '直播流地址提交后可进入直播播放状态',
+      title: '能暂停播放并保留当前帧',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F03-004',
+      title: '能停止播放并回到待播状态',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F03-005',
+      title: '能精准跳转到指定位置',
       level: 'L0',
     ),
   ];
@@ -26,7 +36,7 @@ class ModuleF03Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-03 播放源设置')),
+      appBar: AppBar(title: const Text('F-03 播放控制')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

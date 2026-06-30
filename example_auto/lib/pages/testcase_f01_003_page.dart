@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F01-003：直播时移播放器销毁后可回到初始状态
+/// 测试用例详情（三级页）- F01-003：能释放播放器实例并回收资源
 class TestCaseF01003Page extends StatefulWidget {
   const TestCaseF01003Page({Key? key}) : super(key: key);
 
@@ -12,15 +14,71 @@ class TestCaseF01003Page extends StatefulWidget {
 
 class _TestCaseF01003PageState extends State<TestCaseF01003Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  String _statusText = '未创建';
+  String? _createdPlayerId;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  void _onViewCreated(int viewId) {
+    _player?.setPlayerView(viewId);
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  Future<void> _createPlayer() async {
+    try {
+      _player = FlutterAliPlayerFactory.createAliPlayer();
+      _createdPlayerId = _player!.playerId;
+      _player!.setOnError((code, extra, msg, playerId) {
+        setState(() {
+          _statusText = '错误';
+          _result = 'onError: [$code] $msg (playerId=$playerId)';
+        });
+      });
+      setState(() {
+        _statusText = '已创建';
+        _result = '播放器实例创建成功\nplayerId=$_createdPlayerId\n实例状态: 已创建';
+      });
+    } catch (e) {
+      setState(() {
+        _statusText = '创建失败';
+        _result = '创建播放器失败: $e';
+      });
+    }
+  }
+
+  Future<void> _releasePlayer() async {
+    if (_player == null) {
+      setState(() {
+        _result = '当前没有可释放的播放器实例';
+      });
+      return;
+    }
+    final String id = _createdPlayerId ?? _player!.playerId;
+    try {
+      await _player!.release();
+      final bool removed = !FlutterAliPlayerFactory.instanceMap.containsKey(id);
+      setState(() {
+        _statusText = '已释放';
+        _result = '播放器实例已释放\nplayerId=$id\n从 instanceMap 移除: $removed\n实例状态: 已释放';
+      });
+      _player = null;
+      _createdPlayerId = null;
+    } catch (e) {
+      setState(() {
+        _statusText = '释放失败';
+        _result = '释放播放器失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F01-003 直播时移播放器销毁后可回到初始状态')),
+      appBar: AppBar(title: const Text('F01-003 能释放播放器实例并回收资源')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -43,11 +101,11 @@ class _TestCaseF01003PageState extends State<TestCaseF01003Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动并停留在阿里云播放器 Demo 首页。'),
+                          Text('前置条件: 应用已启动；已创建至少一个播放器实例'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【直播时移】页签，点击【创建时移播放器】按钮 (API: createAliLiveShiftPlayer) [验证点: 验证日志区域出现直播时移播放器创建成功记录。]; 2. 点击【销毁释放】按钮 (API: release) [验证点: 验证播放信息区域中的直播时间、播放位置和时移范围恢复为空或默认值。]; 3. 观察【创建时移播放器】按钮状态 [验证点: 验证【创建时移播放器】按钮重新可点击。]'),
+                          Text('测试步骤: 1. 在【实例列表】中选择目标实例 [验证点: 验证目标实例条目被高亮选中]; 2. 点击【释放播放器】按钮 (API: release) [验证点: 验证【实例状态】文本变为"已释放"]; 3. 观察【实例列表】 [验证点: 验证目标实例条目从列表中移除]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 直播时移播放器的创建与销毁流程可正常完成，释放后界面恢复初始状态。'),
+                          Text('预期结果: 播放器实例被释放，状态变为已释放，实例从列表中移除且无残留资源'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +118,47 @@ class _TestCaseF01003PageState extends State<TestCaseF01003Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  Container(
+                    key: const Key('player_container'),
+                    height: 200,
+                    color: Colors.black,
+                    child: _player != null
+                        ? AliPlayerView(
+                            onCreated: _onViewCreated,
+                            x: 0,
+                            y: 0,
+                            width: double.infinity,
+                            height: 200,
+                          )
+                        : const Center(
+                            child: Text(
+                              '请先创建播放器',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('实例状态: $_statusText'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: ElevatedButton(
+                          key: const Key('btn_create_player'),
+                          onPressed: _createPlayer,
+                          child: const Text('创建播放器'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          key: const Key('btn_release_player'),
+                          onPressed: _releasePlayer,
+                          child: const Text('释放播放器'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

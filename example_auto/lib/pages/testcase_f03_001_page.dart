@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F03-001：输入 URL 后可直接完成单视频起播
+/// 测试用例详情（三级页）- F03-001：能准备播放器进入可播放状态
 class TestCaseF03001Page extends StatefulWidget {
   const TestCaseF03001Page({Key? key}) : super(key: key);
 
@@ -11,18 +13,81 @@ class TestCaseF03001Page extends StatefulWidget {
 }
 
 class _TestCaseF03001PageState extends State<TestCaseF03001Page> {
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
+
+  FlutterAliplayer? _player;
+  String _statusText = 'idle';
   String _result = '';
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((String playerId) {
+      if (!mounted) return;
+      setState(() {
+        _statusText = '已准备';
+        _result = 'onPrepared 回调触发，播放器进入已准备状态';
+      });
+    });
+    _player!.setOnError((int errorCode, String? errorExtra, String? errorMsg,
+        String playerId) {
+      if (!mounted) return;
+      setState(() {
+        _statusText = '错误';
+        _result = 'onError: [$errorCode] ${errorMsg ?? ''}';
+      });
+    });
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  void _onViewCreated(int viewId) {
+    _player?.setPlayerView(viewId);
+    _player?.setUrl(_testUrl);
+  }
+
+  Future<void> _prepare() async {
+    setState(() {
+      _statusText = '准备中';
+      _result = '调用 prepare()，等待 onPrepared 回调...';
+    });
+    await _player?.prepare();
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F03-001 输入 URL 后可直接完成单视频起播')),
+      appBar: AppBar(title: const Text('F03-001 能准备播放器进入可播放状态')),
       body: Column(
         children: <Widget>[
+          Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: 200,
+            child: AliPlayerView(
+              onCreated: _onViewCreated,
+              x: 0,
+              y: 0,
+              width: double.infinity,
+              height: 200,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: <Widget>[
+                const Text('播放状态: ',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(_statusText, key: const Key('txt_status')),
+              ],
+            ),
+          ),
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -32,7 +97,8 @@ class _TestCaseF03001PageState extends State<TestCaseF03001Page> {
                 children: <Widget>[
                   const Text(
                     '测试信息',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   Card(
@@ -43,11 +109,12 @@ class _TestCaseF03001PageState extends State<TestCaseF03001Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；【单播放器】页签已打开；网络连接正常。'),
+                          Text('前置条件: 应用已启动；播放器实例已创建；已设置播放源'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 在【播放地址】输入框中输入可访问的视频地址 [验证点: 验证输入框中显示刚输入的完整地址。]; 2. 点击【播放】按钮 (API: setUrl, prepare) [验证点: 验证视频开始准备播放，日志出现设置播放地址记录。]; 3. 等待首帧显示 [验证点: 验证视频画面正常出现，进度时间开始增长。]'),
+                          Text(
+                              '测试步骤: 1. 点击【准备】按钮 (API: prepare) [验证点: 验证【播放状态】文本显示"准备中"]; 2. 等待 3 秒 [验证点: 验证【播放状态】文本显示"已准备"且 onPrepared 回调触发]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: URL 播放源可被正确接收并完成单播放器起播。'),
+                          Text('预期结果: 播放器 prepare 后进入已准备状态，onPrepared 事件触发'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -57,50 +124,15 @@ class _TestCaseF03001PageState extends State<TestCaseF03001Page> {
                   const SizedBox(height: 16),
                   const Text(
                     'Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  ElevatedButton(
+                    key: const Key('btn_prepare'),
+                    onPressed: _prepare,
+                    child: const Text('准备'),
+                  ),
                 ],
               ),
             ),

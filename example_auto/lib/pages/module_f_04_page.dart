@@ -1,19 +1,24 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-04：视频渲染
+/// 测试用例列表（二级页）- F-04：视频渲染面
 class ModuleF04Page extends StatelessWidget {
   const ModuleF04Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F04-001',
-      title: '切换缩放和旋转模式后画面展示同步变化',
+      title: '能嵌入视频渲染面并显示视频画面',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F04-002',
-      title: '镜像和背景色切换后渲染样式即时刷新',
+      title: '能绑定渲染面与播放器渲染画面到指定区域',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F04-003',
+      title: '能切换渲染面类型并正常显示画面',
       level: 'L0',
     ),
   ];
@@ -21,7 +26,7 @@ class ModuleF04Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-04 视频渲染')),
+      appBar: AppBar(title: const Text('F-04 视频渲染面')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

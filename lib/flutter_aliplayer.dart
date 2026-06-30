@@ -12,7 +12,6 @@ import 'package:flutter_aliplayer/flutter_avpdef.dart';
 export 'flutter_avpdef.dart';
 
 typedef OnPrepared = void Function(String playerId);
-typedef OnSurfaceReady = void Function(String playerId);
 
 typedef OnRenderingStart = void Function(String playerId);
 typedef OnVideoSizeChanged = void Function(
@@ -82,7 +81,6 @@ class FlutterAliplayer {
   OnLoadingProgress? _onLoadingProgress;
   OnLoadingEnd? _onLoadingEnd;
   OnPrepared? onPrepared;
-  OnSurfaceReady? onSurfaceReady;
   OnRenderingStart? onRenderingStart;
   OnVideoSizeChanged? _onVideoSizeChanged;
   OnSeekComplete? _onSeekComplete;
@@ -177,6 +175,7 @@ class FlutterAliplayer {
         "aliPlayer_onPrepare${playerId}",
         StringCodec(),
       );
+      // 注册调用 Flutter 端的 callback, 并发送至 Native 端
       _basicMessageChannel.setMessageHandler((String? msg) async {
         Map<String, dynamic> map = jsonDecode(msg!);
         String playerId = map['playerId'];
@@ -187,10 +186,6 @@ class FlutterAliplayer {
         return '';
       });
     }
-  }
-
-  void setOnSurfaceReady(OnSurfaceReady? surfaceReady) {
-    this.onSurfaceReady = surfaceReady;
   }
 
   /// 播放器事件回调，首帧显示事件
@@ -1297,10 +1292,8 @@ class FlutterAliplayer {
     if (Platform.isIOS) {
       // docTypeForIOS的取值代表沙盒目录路径类型 "0":Documents, "1":Library, "2":Caches, 其他:Documents
       map['docTypeForIOS'] = docTypeForIOS.index.toString();
-    } else if (Platform.isAndroid || Platform.isOhos) {
-      // Android/OHOS 不需设置docType，直接传递localCacheDir
     } else {
-      // 其他平台
+      // 安卓不需设置docType，直接传递localCacheDir
     }
 
     return FlutterAliPlayerFactory.methodChannel
@@ -1636,11 +1629,6 @@ class FlutterAliplayer {
           player.onPrepared!(playerId);
         }
         break;
-      case "onSurfaceReady":
-        if (player.onSurfaceReady != null) {
-          player.onSurfaceReady!(playerId);
-        }
-        break;
       case "onRenderingStart":
         if (player.onRenderingStart != null) {
           player.onRenderingStart!(playerId);
@@ -1779,8 +1767,6 @@ class FlutterAliplayer {
         if (player._onThumbnailGetSuccess != null) {
           if (Platform.isIOS) {
             range = Int64List.fromList(range.cast<int>());
-          } else if (Platform.isAndroid || Platform.isOhos) {
-            // Android/OHOS 不需要转换 range
           }
           player._onThumbnailGetSuccess!(bitmap, range, playerId);
         }
@@ -1926,6 +1912,8 @@ class _VideoPlayerState extends State<AliPlayerView> {
         creationParamsCodec: const StandardMessageCodec(),
       );
     } else if (Platform.isOhos) {
+      // HarmonyOS: 复用 Android 的 viewType, 由 ohos 侧 PlatformViewFactory 注册,
+      // 渲染面统一为 XComponent, SurfaceView/TextureView/DisplayView 差异在鸿蒙侧不再区分。
       return OhosView(
         viewType: 'flutter_aliplayer_render_view',
         onPlatformViewCreated: _onPlatformViewCreated,

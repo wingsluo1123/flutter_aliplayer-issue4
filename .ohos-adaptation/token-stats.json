@@ -1,0 +1,104 @@
+{
+  "snapshots": [
+    {
+      "stageId": "analysis",
+      "timestamp": "2026-06-30T04:29:58.544Z",
+      "cumulative": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "delta": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    },
+    {
+      "stageId": "test-design",
+      "timestamp": "2026-06-30T04:47:47.758Z",
+      "cumulative": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "delta": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    },
+    {
+      "stageId": "coding-library",
+      "timestamp": "2026-06-30T05:03:08.509Z",
+      "cumulative": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "delta": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    },
+    {
+      "stageId": "validation",
+      "timestamp": "2026-06-30T05:21:21.279Z",
+      "cumulative": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "delta": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    },
+    {
+      "stageId": "demo-gen",
+      "timestamp": "2026-06-30T05:48:25.302Z",
+      "cumulative": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "delta": {
+        "interactions": 0,
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ],
+  "latest": {
+    "sessions": {
+      "total": 0,
+      "primary_count": 0,
+      "sub_count": 0
+    },
+    "totals": {
+      "interactions": 0,
+      "total_tokens": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "reasoning_tokens": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "total_cost": 0
+    },
+    "byModel": [],
+    "byAgent": []
+  },
+  "latestSinceClone": null
+}

@@ -1,14 +1,24 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-12：悬浮窗播放
+/// 测试用例列表（二级页）- F-12：列表播放器
 class ModuleF12Page extends StatelessWidget {
   const ModuleF12Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F12-001',
-      title: '尝试开启悬浮窗时会给出明确的降级提示',
+      title: '能添加 URL 播放源到列表并成功加入',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F12-002',
+      title: '能切换到下一个播放源并播放下一项内容',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F12-003',
+      title: '能切换到上一个播放源并播放上一项内容',
       level: 'L0',
     ),
   ];
@@ -16,7 +26,7 @@ class ModuleF12Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-12 悬浮窗播放')),
+      appBar: AppBar(title: const Text('F-12 列表播放器')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

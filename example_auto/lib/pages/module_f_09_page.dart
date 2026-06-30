@@ -1,14 +1,29 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-09：字幕支持
+/// 测试用例列表（二级页）- F-09：渲染模式
 class ModuleF09Page extends StatelessWidget {
   const ModuleF09Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F09-001',
-      title: '外挂字幕添加并启用后可在画面中显示',
+      title: '能设置等比缩放模式并保持画面比例不变形',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F09-002',
+      title: '能设置全屏缩放模式并填满渲染区域',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F09-003',
+      title: '能设置 90 度旋转并使画面旋转',
+      level: 'L0',
+    ),
+    _TestCaseEntry(
+      caseId: 'F09-004',
+      title: '能设置水平镜像并使画面水平翻转',
       level: 'L0',
     ),
   ];
@@ -16,7 +31,7 @@ class ModuleF09Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-09 字幕支持')),
+      appBar: AppBar(title: const Text('F-09 渲染模式')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

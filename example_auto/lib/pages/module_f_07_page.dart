@@ -1,19 +1,19 @@
 
 import 'package:flutter/material.dart';
 
-/// 测试用例列表（二级页）- F-07：事件回调
+/// 测试用例列表（二级页）- F-07：字幕
 class ModuleF07Page extends StatelessWidget {
   const ModuleF07Page({Key? key}) : super(key: key);
 
   static const List<_TestCaseEntry> _testCases = <_TestCaseEntry>[
     _TestCaseEntry(
       caseId: 'F07-001',
-      title: '播放关键事件会写入日志并与界面状态一致',
+      title: '能添加外挂字幕并加载字幕文件',
       level: 'L0',
     ),
     _TestCaseEntry(
       caseId: 'F07-002',
-      title: '播放完成后界面与日志会同步展示结束状态',
+      title: '能启用外挂字幕并在画面显示字幕内容',
       level: 'L0',
     ),
   ];
@@ -21,7 +21,7 @@ class ModuleF07Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F-07 事件回调')),
+      appBar: AppBar(title: const Text('F-07 字幕')),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: _testCases.length,

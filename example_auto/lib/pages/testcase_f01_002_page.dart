@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F01-002：列表播放器创建后可进入可操作状态
+/// 测试用例详情（三级页）- F01-002：能通过自定义 playerId 创建独立播放器实例
 class TestCaseF01002Page extends StatefulWidget {
   const TestCaseF01002Page({Key? key}) : super(key: key);
 
@@ -12,15 +14,59 @@ class TestCaseF01002Page extends StatefulWidget {
 
 class _TestCaseF01002PageState extends State<TestCaseF01002Page> {
   String _result = '';
+  final TextEditingController _playerIdController = TextEditingController();
+  final List<FlutterAliplayer> _players = <FlutterAliplayer>[];
+  final List<String> _instanceIds = <String>[];
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  Future<void> _createPlayer() async {
+    final String id = _playerIdController.text.trim();
+    if (id.isEmpty) {
+      setState(() {
+        _result = '请先在输入框中输入 playerId';
+      });
+      return;
+    }
+    try {
+      if (FlutterAliPlayerFactory.instanceMap.containsKey(id)) {
+        setState(() {
+          _result = 'playerId="$id" 已存在，请使用其他 playerId';
+        });
+        return;
+      }
+      final FlutterAliplayer player =
+          FlutterAliPlayerFactory.createAliPlayer(playerId: id);
+      player.setOnError((code, extra, msg, playerId) {
+        setState(() {
+          _result = 'onError: [$code] $msg (playerId=$playerId)';
+        });
+      });
+      _players.add(player);
+      _instanceIds.add(id);
+      final String listText =
+          _instanceIds.map((e) => '  - $e').join('\n');
+      setState(() {
+        _result = '创建成功，playerId="$id"\n当前实例列表 (${_instanceIds.length} 个):\n$listText';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '创建播放器失败: $e';
+      });
+    }
+  }
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  @override
+  void dispose() {
+    for (final FlutterAliplayer p in _players) {
+      p.release();
+    }
+    _playerIdController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F01-002 列表播放器创建后可进入可操作状态')),
+      appBar: AppBar(title: const Text('F01-002 能通过自定义 playerId 创建独立播放器实例')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -43,11 +89,11 @@ class _TestCaseF01002PageState extends State<TestCaseF01002Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动并停留在阿里云播放器 Demo 首页。'),
+                          Text('前置条件: 应用已启动；播放器演示页面已打开'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【列表播放器】页签，点击【创建列表播放器】按钮 (API: createAliListPlayer) [验证点: 验证页面出现创建成功提示，列表播放控制区域可见。]; 2. 点击【加载默认列表】按钮 [验证点: 验证【播放列表】区域出现至少 1 条资源记录。]; 3. 点击任意一条播放列表记录 [验证点: 验证该记录高亮显示，当前资源进入可播放状态。]'),
+                          Text('测试步骤: 1. 在【playerId 输入框】中输入"player-A" (API: createAliPlayer, playerId: player-A) [验证点: 验证输入框文本为"player-A"]; 2. 点击【创建播放器】按钮 (API: createAliPlayer) [验证点: 验证【实例列表】中出现"player-A"条目]; 3. 在【playerId 输入框】中输入"player-B"后点击【创建播放器】按钮 (API: createAliPlayer, playerId: player-B) [验证点: 验证【实例列表】中同时存在"player-A"和"player-B"两个独立条目]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 列表播放器可创建完成，并能够接管播放列表中的资源。'),
+                          Text('预期结果: 不同 playerId 创建的播放器实例在实例列表中作为独立条目存在，互不干扰'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +106,43 @@ class _TestCaseF01002PageState extends State<TestCaseF01002Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  TextField(
+                    key: const Key('input_player_id'),
+                    controller: _playerIdController,
+                    decoration: const InputDecoration(
+                      labelText: 'playerId',
+                      hintText: '请输入 playerId，如 player-A',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    key: const Key('btn_create_player'),
+                    onPressed: _createPlayer,
+                    child: const Text('创建播放器'),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '实例列表',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    key: const Key('instance_list'),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: _instanceIds.isEmpty
+                        ? const Text('（暂无实例）')
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: _instanceIds
+                                .map((e) => Text('• $e'))
+                                .toList(),
+                          ),
+                  ),
                 ],
               ),
             ),

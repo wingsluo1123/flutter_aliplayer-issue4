@@ -1,8 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer.dart';
+import 'package:flutter_aliplayer/flutter_aliplayer_factory.dart';
 import 'package:flutter_aliplayer_example/widgets/result_panel.dart';
 
-/// 测试用例详情（三级页）- F04-002：镜像和背景色切换后渲染样式即时刷新
+/// 测试用例详情（三级页）- F04-002：能绑定渲染面与播放器渲染画面到指定区域
 class TestCaseF04002Page extends StatefulWidget {
   const TestCaseF04002Page({Key? key}) : super(key: key);
 
@@ -12,15 +14,104 @@ class TestCaseF04002Page extends StatefulWidget {
 
 class _TestCaseF04002PageState extends State<TestCaseF04002Page> {
   String _result = '';
+  FlutterAliplayer? _player;
+  int? _viewId;
+  String _statusText = '未创建';
+  bool _bound = false;
 
-  // TODO(import): 添加插件 import，例如 import 'package:xxx/xxx.dart';
+  static const String _testUrl =
+      'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
 
-  // TODO(init): 如果本模块需要初始化实例（如 FToast().init(context)），在此声明并初始化。
+  @override
+  void initState() {
+    super.initState();
+    _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnPrepared((playerId) {
+      setState(() {
+        _statusText = '已准备';
+        _result = 'onPrepared 回调触发，播放器已准备';
+      });
+      _player!.play();
+    });
+    _player!.setOnRenderingStart((playerId) {
+      setState(() {
+        _statusText = '画面可见';
+        _result = '首帧渲染完成，画面已渲染到指定渲染面区域';
+      });
+    });
+    _player!.setOnError((code, extra, msg, playerId) {
+      setState(() {
+        _statusText = '错误';
+        _result = 'onError: [$code] $msg (playerId=$playerId)';
+      });
+    });
+  }
+
+  void _onViewCreated(int viewId) {
+    _viewId = viewId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _result = '渲染面已创建，viewId=$viewId\n请点击【绑定渲染面】按钮调用 setPlayerView';
+      });
+    });
+  }
+
+  Future<void> _bindView() async {
+    if (_viewId == null) {
+      setState(() {
+        _result = '渲染面尚未创建，无法绑定';
+      });
+      return;
+    }
+    try {
+      await _player!.setPlayerView(_viewId!);
+      setState(() {
+        _bound = true;
+        _statusText = '已绑定';
+        _result = '已调用 setPlayerView($_viewId)\n绑定状态: 已绑定';
+      });
+    } catch (e) {
+      setState(() {
+        _result = '绑定渲染面失败: $e';
+      });
+    }
+  }
+
+  Future<void> _play() async {
+    if (!_bound) {
+      setState(() {
+        _result = '请先点击【绑定渲染面】按钮完成绑定';
+      });
+      return;
+    }
+    try {
+      setState(() {
+        _statusText = '准备中';
+        _result = '正在设置播放源并准备...';
+      });
+      await _player!.setUrl(_testUrl);
+      await _player!.prepare();
+      setState(() {
+        _result = '已调用 setUrl + prepare\n等待 onPrepared 后自动播放';
+      });
+    } catch (e) {
+      setState(() {
+        _statusText = '错误';
+        _result = '播放失败: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.release();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('F04-002 镜像和背景色切换后渲染样式即时刷新')),
+      appBar: AppBar(title: const Text('F04-002 能绑定渲染面与播放器渲染画面到指定区域')),
       body: Column(
         children: <Widget>[
           Expanded(
@@ -43,11 +134,11 @@ class _TestCaseF04002PageState extends State<TestCaseF04002Page> {
                         children: <Widget>[
                           Text('优先级: L0'),
                           const SizedBox(height: 4),
-                          Text('前置条件: 应用已启动；单播放器已成功起播。'),
+                          Text('前置条件: 应用已启动；播放器实例已创建；渲染面已嵌入'),
                           const SizedBox(height: 4),
-                          Text('测试步骤: 1. 点击【设置】页签，在【镜像模式】区域点击【水平】选项 (API: setMirrorMode) [验证点: 验证【水平】选项进入选中状态，画面左右方向发生变化。]; 2. 在【背景色】区域点击【蓝色】选项 (API: setVideoBackgroundColor) [验证点: 验证【蓝色】选项进入选中状态。]; 3. 观察视频区域边缘或留白区域 [验证点: 验证渲染背景显示为蓝色，镜像后的画面持续稳定。]'),
+                          Text('测试步骤: 1. 点击【绑定渲染面】按钮 (API: setPlayerView, viewId: 当前渲染面) [验证点: 验证【绑定状态】文本显示"已绑定"]; 2. 设置播放源后点击【播放】按钮 (API: play) [验证点: 验证视频画面渲染到指定渲染面区域且位置正确]'),
                           const SizedBox(height: 4),
-                          Text('预期结果: 镜像方式和背景色切换后会立即反映到视频渲染区域。'),
+                          Text('预期结果: 绑定后播放器输出画面到指定渲染面，位置和尺寸正确'),
                           const SizedBox(height: 4),
                           Text('后置条件: '),
                         ],
@@ -60,47 +151,42 @@ class _TestCaseF04002PageState extends State<TestCaseF04002Page> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  // TODO(actions): 根据测试用例的步骤，填充相应的操作按钮：
-                  //
-                  // ■ API 类操作 → 用 ElevatedButton 包装，按钮文字要表明测试点，
-                  //   点击后调用对应 API，并 setState 更新 _result。
-                  //
-                  // ■ UI 类操作 → 直接在此处放置该 Widget，
-                  //   必要时把交互回调/可验证状态写入 _result。
-                  //
-                  // ■ build 期间的回调中的 setState() 调用时机（重要）：
-                  //   如 loadStateChanged、builder 等在 widget build 阶段同步执行的回调，
-                  //   若需更新状态，必须使用 WidgetsBinding.instance.addPostFrameCallback
-                  //   延迟到帧渲染完成后执行，否则会触发 "setState() called during build" 异常。
-                  //
-                  // 示例（API 类）:
-                  //   ElevatedButton(
-                  //     key: const Key('btn_show_toast'),
-                  //     onPressed: () async {
-                  //       try {
-                  //         final res = await SomePlugin.someApi(arg: value);
-                  //         setState(() { _result = res.toString(); });
-                  //       } catch (e) {
-                  //         setState(() { _result = 'error: ' + e.toString(); });
-                  //       }
-                  //     },
-                  //     child: const Text('执行测试'),
-                  //   ),
-                  //
-                  // 示例（UI 类 - build 期间回调）:
-                  //   ExtendedImage.network(
-                  //     url,
-                  //     loadStateChanged: (state) {
-                  //       if (state.extendedImageLoadState == LoadState.completed) {
-                  //         // ❌ 错误：build 期间直接调用 setState
-                  //         // setState(() { _result = '成功'; });
-                  //         // ✅ 正确：延迟到帧渲染完成后执行
-                  //         WidgetsBinding.instance.addPostFrameCallback((_) {
-                  //           setState(() { _result = '成功'; });
-                  //         });
-                  //       }
-                  //     },
-                  //   ),
+                  Container(
+                    key: const Key('player_container'),
+                    height: 200,
+                    color: Colors.black,
+                    child: _player != null
+                        ? AliPlayerView(
+                            onCreated: _onViewCreated,
+                            x: 0,
+                            y: 0,
+                            width: double.infinity,
+                            height: 200,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('绑定状态: $_statusText'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: ElevatedButton(
+                          key: const Key('btn_bind_view'),
+                          onPressed: _bindView,
+                          child: const Text('绑定渲染面'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          key: const Key('btn_play'),
+                          onPressed: _play,
+                          child: const Text('播放'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
