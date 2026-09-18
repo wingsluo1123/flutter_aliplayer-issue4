@@ -27,12 +27,19 @@ import {
   AbilityAware,
   AbilityPluginBinding,
   BinaryMessenger,
+  TextureRegistry,
+  SurfaceTextureEntry,
 } from '@ohos/flutter_ohos';
 import common from '@ohos.app.ability.common';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { AliPlayerProxy } from './AliPlayerProxy';
 import { AliPlayerViewFactory, AliPlayerSurfaceRegistry, SurfaceIdCallback } from './AliPlayerViewFactory';
+
+/** 实现类暴露的 NativeWindow 指针获取方法 (旧版接口未声明, 本地接口中转) */
+interface NativeWindowPtrProvider {
+  getNativeWindowPtr: () => bigint;
+}
 
 const LOG_DOMAIN: number = 0x0001;
 const LOG_TAG: string = 'FlutterAliplayerPlugin';
@@ -74,6 +81,10 @@ class NoopMethodCallHandler implements MethodCallHandler {
 export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCallHandler, StreamHandler, AbilityAware {
   private messenger: BinaryMessenger | null = null;
   private context: common.Context | null = null;
+  // Texture 路径 (Alpha 合成): mode≠0 时创建 Flutter 纹理, 合成画面经纹理透出下层 Widget
+  private textureRegistry: TextureRegistry | null = null;
+  private alphaTextureEntries: Map<string, SurfaceTextureEntry> = new Map();
+  private alphaTextureIds: Map<string, number> = new Map();
   private uiContext: common.UIAbilityContext | null = null;
 
   // 主通道
@@ -98,11 +109,53 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
     return 'FlutterAliplayerPlugin';
   }
 
+  /**
+   * 获取引擎纹理的 OHNativeWindow* 指针字符串 (bigint 无损)。
+   * getNativeWindowPtr 未在旧版 SurfaceTextureEntry 接口暴露, 经本地接口中转调用实现类方法。
+   */
+  private getNativeWindowPtrString(entry: SurfaceTextureEntry): string {
+    const impl = entry as object as NativeWindowPtrProvider;
+    return impl.getNativeWindowPtr().toString();
+  }
+
+  /**
+   * 释放 playerId 关联的 Alpha 合成纹理。
+   * 必须经 textureRegistry.unregisterTexture 注销 — 该引擎版本的
+   * SurfaceTextureRegistryEntry.release() 是 `throw new Error('Method not implemented.')`,
+   * 调用它会抛异常并中断后续清理 (mode 0 切不回直出)。
+   * 纹理自身的 OHNativeWindow* 归引擎所有, unregisterTexture 即可, 无需手动释放。
+   */
+  private releaseAlphaTexture(playerId: string): void {
+    const textureId = this.alphaTextureIds.get(playerId);
+    this.alphaTextureEntries.delete(playerId);
+    this.alphaTextureIds.delete(playerId);
+    if (textureId === undefined || this.textureRegistry === null) {
+      return;
+    }
+    try {
+      this.textureRegistry.unregisterTexture(textureId);
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'alpha texture released: textureId=%{public}d', textureId);
+    } catch (e) {
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'unregister alpha texture %{public}d failed: %{public}s',
+        textureId, (e as Error).message);
+    }
+  }
+
+  /** 释放所有 Alpha 合成纹理 (engine detach / 批量清理) */
+  private releaseAllAlphaTextures(): void {
+    const playerIds: string[] = Array.from(this.alphaTextureIds.keys());
+    for (const pid of playerIds) {
+      this.releaseAlphaTexture(pid);
+    }
+  }
+
   // ============== FlutterPlugin 生命周期 ==============
 
   onAttachedToEngine(binding: FlutterPluginBinding): void {
     this.messenger = binding.getBinaryMessenger();
     this.context = binding.getApplicationContext();
+    // Texture 路径 (Alpha 合成)
+    this.textureRegistry = binding.getTextureRegistry();
 
     // 注册 PlatformView Factory
     const surfaceCallback: SurfaceIdCallback = (viewId: number, surfaceId: string): void => {
@@ -157,6 +210,9 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
       proxy.release();
     });
     this.players.clear();
+    // 释放所有 Alpha 合成纹理 (先于 textureRegistry 置空)
+    this.releaseAllAlphaTextures();
+    this.textureRegistry = null;
     this.viewIdToSurfaceId.clear();
     this.viewIdToPlayerId.clear();
     this.messenger = null;
@@ -420,12 +476,73 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
       case 'getRotateMode':
       case 'setMirrorMode':
       case 'getMirrorMode':
-      case 'setAlphaRenderMode':
-      case 'getAlPhaRenderMode':
       case 'setVideoBackgroundColor':
       case 'setOutputAudioChannel':
-        // 旋转/镜像/Alpha/背景色: AVPlayer 不支持, ArkUI transform 层可后续扩展
+        // 旋转/镜像/背景色: AVPlayer 不支持, ArkUI transform 层可后续扩展
         result.success(null);
+        break;
+      case 'setAlphaRenderMode':
+        // Alpha 渲染 (issue #3 问题一, Texture 路径):
+        // mode=1-4 时创建 Flutter 纹理, 纹理 surface 作为合成目标,
+        // 合成画面经纹理参与 Flutter 合成 — 透明区可透出下层 Widget。
+        // 成功返回 textureId (Map: {textureId}), Dart 侧用 Texture widget 显示。
+        // 失败返回 error 让 Dart 侧降级。
+        // 注: 不用 notImplemented — 该响应在此引擎版本下会使 Dart 侧 await 挂起。
+        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
+          const mode = (arg as Object) as number;
+          if (mode === 0) {
+            // 切回直出: 先释放合成渲染器与纹理, 再把 AVPlayer 指回 XComponent surface
+            if (proxy.setAlphaRenderMode(0)) {
+              this.releaseAlphaTexture(playerId);
+              result.success(null);
+            } else {
+              result.error('ALPHA_ERROR', 'setAlphaRenderMode(0) failed', null);
+            }
+            return;
+          }
+          if (this.textureRegistry === null) {
+            result.error('ALPHA_ERROR', 'TextureRegistry unavailable', null);
+            return;
+          }
+          try {
+            let entry = this.alphaTextureEntries.get(playerId);
+            let textureId = this.alphaTextureIds.get(playerId);
+            if (entry === undefined || textureId === undefined) {
+              textureId = this.textureRegistry.getTextureId();
+              entry = this.textureRegistry.registerTexture(textureId);
+              this.alphaTextureEntries.set(playerId, entry);
+              this.alphaTextureIds.set(playerId, textureId);
+              hilog.info(LOG_DOMAIN, LOG_TAG, 'alpha texture created: textureId=%{public}d', textureId);
+            }
+            const textureSurfaceId = entry.getSurfaceId().toString();
+            // Texture 路径: 传引擎的 OHNativeWindow* 指针 (bigint 无损转字符串,
+            // 避免 number 精度截断导致 EGL_BAD_NATIVE_WINDOW)。
+            // 注: getNativeWindowPtr 未在旧版 SurfaceTextureEntry 接口暴露, 经反射式调用获取
+            const nativeWindowPtr = this.getNativeWindowPtrString(entry);
+            if (proxy.setAlphaRenderMode(mode, textureSurfaceId, nativeWindowPtr)) {
+              const resultMap = new Map<string, Object>();
+              resultMap.set('textureId', textureId);
+              result.success(resultMap);
+            } else {
+              result.error('UNSUPPORTED',
+                `AlphaRenderMode ${mode} is not supported on OHOS now`, null);
+            }
+          } catch (e) {
+            result.error('ALPHA_ERROR', (e as Error).message, null);
+          }
+        },
+        // player 不存在时报错, 避免 withProxy 静默 success(null) 掩盖问题
+        (r: MethodResult): void => {
+          r.error('PLAYER_NOT_FOUND', `player not found: ${playerId}`, null);
+        });
+        break;
+      case 'getAlPhaRenderMode':
+      case 'getAlphaRenderMode':
+        // 返回当前生效的 Alpha 模式 (默认 0)。
+        // 注: Dart 侧历史拼写为 getAlPhaRenderMode, 此处兼容两种拼写。
+        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
+          result.success(proxy.getAlphaRenderMode());
+        });
         break;
 
       // ====== 查询 ======
@@ -652,10 +769,15 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
     playerId: string,
     result: MethodResult,
     action: (proxy: AliPlayerProxy) => void,
+    onMissing?: (result: MethodResult) => void,
   ): void {
     const proxy = this.players.get(playerId);
     if (proxy === undefined) {
       hilog.warn(LOG_DOMAIN, LOG_TAG, 'player not found: %{public}s', playerId);
+      if (onMissing !== undefined) {
+        onMissing(result);
+        return;
+      }
       result.success(null);
       return;
     }
@@ -678,6 +800,8 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
       existing.release();
       this.players.delete(playerId);
     }
+    // 复用同一 playerId 时清理旧纹理, 避免泄漏
+    this.releaseAlphaTexture(playerId);
     const proxy = new AliPlayerProxy(playerId, this.messenger, (data: Map<string, Object>): void => {
       this.sendEvent(data);
     });
@@ -692,6 +816,8 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
   /** 释放播放器 */
   private handleRelease(playerId: string, result: MethodResult): void {
     const proxy = this.players.get(playerId);
+    // 纹理清理与播放器是否存在无关, 避免残留纹理
+    this.releaseAlphaTexture(playerId);
     if (proxy !== undefined) {
       proxy.release().then(() => {
         this.players.delete(playerId);
