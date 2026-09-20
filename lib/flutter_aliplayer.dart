@@ -742,7 +742,11 @@ class FlutterAliplayer {
   /// Alpha渲染模式，支持alpha在右侧、左侧、上侧、下侧，默认值无
   ///
   /// [AlphaRenderMode] 透明通道渲染模式
-  Future<void> setAlphaRenderMode(int mode) async {
+  ///
+  /// OHOS 侧 (Texture 路径): mode=1-4 成功后返回 Map{textureId},
+  /// 请将返回的 textureId 用于 [Texture] widget 显示合成画面 (透明区透出下层 Widget)。
+  /// 其他平台返回 null (原生 SDK 直出)。
+  Future<dynamic> setAlphaRenderMode(int mode) async {
     return FlutterAliPlayerFactory.methodChannel
         .invokeMethod('setAlphaRenderMode', wrapWithPlayerId(arg: mode));
   }

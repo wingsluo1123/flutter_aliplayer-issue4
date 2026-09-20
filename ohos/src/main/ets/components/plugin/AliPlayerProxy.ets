@@ -13,6 +13,7 @@
 import { media } from '@kit.MediaKit';
 import { audio } from '@kit.AudioKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import alphaCompositor from 'libalpha_compositor.so';
 import {
   BasicMessageChannel,
   StringCodec,
@@ -34,6 +35,11 @@ interface StateChangedCallbackEvent {
   method: string;
   playerId: string;
   newState: number;
+}
+
+/** MediaKit 业务错误的对象形态 (仅取 business error code) */
+interface MediaErrorLike {
+  code?: number;
 }
 
 /** Aliyun 播放器状态枚举 (与 Dart 侧 PlayState 对齐) */
@@ -60,6 +66,9 @@ export class AliPlayerProxy {
   private currentState: string = 'idle';
   private surfaceId: string | null = null;
   private pendingSurfaceId: string | null = null;
+  // surfaceId 是否已成功赋值过。MediaKit 规定首次赋值只能在 initialized 状态,
+  // 赋值过之后才可在 prepared/playing/paused/completed/stopped 状态更新。
+  private surfaceIdApplied: boolean = false;
   private pendingPlay: boolean = false;
   private pendingSeekMs: number = -1;
   private pendingSeekMode: number = 1; // 默认精准
@@ -72,6 +81,13 @@ export class AliPlayerProxy {
   private released: boolean = false;
   private listenersBound: boolean = false;
   private currentSpeed: number = 1.0;
+  private pendingPrepare: boolean = false;
+  // Alpha 合成渲染器句柄 ('' = 未创建)。mode≠0 时 AVPlayer 输出到离屏 surface,
+  // 由 C++ AlphaCompositeRenderer 合成后画到 XComponent surface。
+  private alphaRendererHandle: string = '';
+  private alphaMode: number = 0;
+  // Aliyun ScaleMode: 0=FIT, 1=FILL, 2=TO_FILL。Alpha 模式下需转发给合成器。
+  private scalingMode: number = 0;
 
   constructor(playerId: string, messenger: BinaryMessenger, emitEvent: EmitEventCallback) {
     this.playerId = playerId;
@@ -110,12 +126,17 @@ export class AliPlayerProxy {
     player.on('error', (err: Error) => {
       hilog.error(LOG_DOMAIN, LOG_TAG, 'AVPlayer error: %{public}s', err.message);
       this.currentState = 'error';
-      this.sendError(5400102, err.message, 'AVPlayer error');
+      // 转发 AVPlayer 的真实错误码 (BusinessError.code), 不要硬编码成 5400102 掩盖根因
+      this.sendError(this.errCodeOf(err), err.message, 'AVPlayer error');
     });
     player.on('videoSizeChange', (width: number, height: number) => {
+      // 合成器需要源尺寸计算半幅内容尺寸与缩放 (离屏 producer 窗口查不到几何)
+      this.pushVideoSizeToCompositor(width, height);
+      // Alpha 模式下对外报合成后(可见内容)尺寸, 与 getVideoWidth/Height 语义一致
+      const size = this.toReportedSize(width, height);
       const data = this.newEvent('onVideoSizeChanged');
-      data.set('width', width);
-      data.set('height', height);
+      data.set('width', size[0]);
+      data.set('height', size[1]);
       data.set('rotation', 0);
       this.emitEvent(data);
     });
@@ -169,8 +190,16 @@ export class AliPlayerProxy {
       // initialized 阶段可设置 surfaceId / audioRendererInfo
       this.applySurfaceId();
       this.applyAudioRendererInfo();
+      // setUrl 后过早调用的 prepare 在此状态才可执行
+      if (this.pendingPrepare) {
+        this.pendingPrepare = false;
+        this.prepare();
+      }
     } else if (state === 'prepared') {
       this.isPrepared = true;
+      // prepared 状态可更新已赋值过的 surfaceId — 重放延后的切换
+      // (典型场景: prepare 之后才调用 setAlphaRenderMode, 此时 surface 只能延后)
+      this.replayPendingSurfaceId();
       this.emitPrepared();
       // 应用 loop/autoPlay
       try {
@@ -232,20 +261,136 @@ export class AliPlayerProxy {
     }
   }
 
-  private applySurfaceId(): void {
+  /** @returns 是否已真正写入 AVPlayer.surfaceId (延后待应用时返回 false) */
+  private applySurfaceId(): boolean {
     if (this.avPlayer === null) {
+      return false;
+    }
+    const sid = this.resolveTargetSurfaceId();
+    if (sid === null || sid === undefined || sid.length === 0) {
+      return false;
+    }
+    // MediaKit (@ohos.multimedia.media.d.ts, surfaceId) 的赋值规则:
+    //   - 首次赋值只能在 'initialized' 状态;
+    //   - 赋值过之后, 可在 prepared / playing / paused / completed / stopped 状态更新。
+    // idle / error 等状态赋值会抛 5400102 (Operation not allowed), 因此延后到
+    // initialized (handleStateChange) 再真正设置。
+    if (!this.canSetSurfaceId()) {
+      this.pendingSurfaceId = sid;
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'applySurfaceId deferred (state=%{public}s): %{public}s',
+        this.currentState, sid);
+      return false;
+    }
+    try {
+      this.avPlayer.surfaceId = sid;
+      this.surfaceIdApplied = true;
+      this.pendingSurfaceId = null;
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'applySurfaceId ok: %{public}s', sid);
+      return true;
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'applySurfaceId failed: %{public}s', (e as Error).message);
+      return false;
+    }
+  }
+
+  /** 当前状态是否允许给 AVPlayer.surfaceId 赋值 (见 applySurfaceId 的状态规则注释) */
+  private canSetSurfaceId(): boolean {
+    if (this.currentState === 'initialized') {
+      return true;
+    }
+    if (!this.surfaceIdApplied) {
+      return false;
+    }
+    return this.currentState === 'prepared' || this.currentState === 'playing' ||
+      this.currentState === 'paused' || this.currentState === 'completed' ||
+      this.currentState === 'stopped';
+  }
+
+  /** 有延后未应用的 surface 时, 在允许赋值的状态重放一次 */
+  private replayPendingSurfaceId(): void {
+    if (this.pendingSurfaceId === null) {
       return;
     }
-    const sid = this.pendingSurfaceId !== null ? this.pendingSurfaceId : this.surfaceId;
-    if (sid !== null && sid !== undefined && sid.length > 0) {
-      try {
-        this.avPlayer.surfaceId = sid;
-        this.pendingSurfaceId = null;
-        hilog.info(LOG_DOMAIN, LOG_TAG, 'applySurfaceId ok: %{public}s', sid);
-      } catch (e) {
-        hilog.error(LOG_DOMAIN, LOG_TAG, 'applySurfaceId failed: %{public}s', (e as Error).message);
-      }
+    this.applySurfaceId();
+  }
+
+  /** 计算当前要应用的渲染面 surfaceId: alpha 模式下为合成 renderer 的离屏 producer 面 */
+  private resolveTargetSurfaceId(): string {
+    if (this.alphaRendererHandle !== '') {
+      return alphaCompositor.getProducerSurfaceId(this.alphaRendererHandle) as string;
     }
+    return this.pendingSurfaceId !== null ? this.pendingSurfaceId : (this.surfaceId ?? '');
+  }
+
+  /**
+   * 设置 Alpha 渲染模式 (issue #3 问题一, Texture 路径)。
+   * mode=0: 直出 XComponent surface (默认路径, 零开销);
+   * mode=1-4: 创建 C++ 合成渲染器, AVPlayer 输出到离屏 surface,
+   *          GLES shader 合成后画到 alphaTargetSurfaceId (Flutter 纹理 surface)。
+   * alphaTargetSurfaceId: 由 plugin 经 TextureRegistry 创建并传入; 传空则回退 XComponent surface。
+   */
+  setAlphaRenderMode(mode: number, alphaTargetSurfaceId?: string, nativeWindowPtr?: string): boolean {
+    if (mode === this.alphaMode) {
+      return true;
+    }
+    if (mode === 0) {
+      // 切回直出: 销毁合成渲染器, AVPlayer 重新指向 XComponent surface
+      if (this.alphaRendererHandle !== '') {
+        alphaCompositor.destroyRenderer(this.alphaRendererHandle);
+        this.alphaRendererHandle = '';
+      }
+      this.alphaMode = 0;
+      // 清掉可能残留的离屏 surface — 否则 resolveTargetSurfaceId 会继续返回它,
+      // 导致切回直出后画面仍指向已销毁的合成器
+      this.pendingSurfaceId = null;
+      this.applySurfaceId();
+      return true;
+    }
+    if (mode < 1 || mode > 4) {
+      return false;
+    }
+    // 合成目标: 优先纹理 surface (透出下层 Widget), 无纹理时回退 XComponent surface
+    const targetSid = (alphaTargetSurfaceId !== undefined && alphaTargetSurfaceId.length > 0)
+      ? alphaTargetSurfaceId : this.surfaceId;
+    if (targetSid === null || targetSid === undefined || targetSid.length === 0) {
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'setAlphaRenderMode(%{public}d) deferred: no target surface yet', mode);
+      return false;
+    }
+    try {
+      if (this.alphaRendererHandle === '') {
+        this.alphaRendererHandle = nativeWindowPtr !== undefined && nativeWindowPtr.length > 0
+          ? alphaCompositor.createRenderer(targetSid, nativeWindowPtr) as string
+          : alphaCompositor.createRenderer(targetSid) as string;
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'alpha renderer created: %{public}s target=%{public}s win=%{public}s',
+          this.alphaRendererHandle, targetSid, nativeWindowPtr ?? 'none');
+        // 新建的合成器需继承此前已设置的缩放模式
+        alphaCompositor.setScalingMode(this.alphaRendererHandle, this.scalingMode);
+        // videoSizeChange 可能早于合成器创建 (Alpha 常在 prepared 后开启),
+        // 因此创建后立即补推一次已知的源尺寸
+        try {
+          if (this.avPlayer !== null) {
+            this.pushVideoSizeToCompositor(this.avPlayer.width, this.avPlayer.height);
+          }
+        } catch (e) {
+          hilog.warn(LOG_DOMAIN, LOG_TAG, 'push initial video size failed: %{public}s',
+            (e as Error).message);
+        }
+      }
+      alphaCompositor.setMode(this.alphaRendererHandle, mode);
+      this.alphaMode = mode;
+      // AVPlayer 切到离屏 surface: 首次赋值须等 initialized, 之后可在
+      // prepared/playing 等状态更新; 不允许时 applySurfaceId 会延后并重放。
+      this.applySurfaceId();
+      return true;
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'setAlphaRenderMode(%{public}d) failed: %{public}s',
+        mode, (e as Error).message);
+      return false;
+    }
+  }
+
+  getAlphaRenderMode(): number {
+    return this.alphaMode;
   }
 
   private applyAudioRendererInfo(): void {
@@ -273,12 +418,19 @@ export class AliPlayerProxy {
       this.isPrepared = true;
       return;
     }
+    // setUrl 后 AVPlayer 需异步进入 initialized 才允许 prepare, 挂起到状态就绪
+    if (this.currentState !== 'initialized') {
+      this.pendingPrepare = true;
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'prepare deferred (state=%{public}s), playerId=%{public}s',
+        this.currentState, this.playerId);
+      return;
+    }
     try {
       this.avPlayer.prepare().then(() => {
         hilog.info(LOG_DOMAIN, LOG_TAG, 'prepare ok, playerId=%{public}s', this.playerId);
       }).catch((e: Error) => {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'prepare failed: %{public}s', e.message);
-        this.sendError(5400102, e.message, 'prepare failed');
+        this.sendError(this.errCodeOf(e), e.message, 'prepare failed');
       });
     } catch (e) {
       hilog.error(LOG_DOMAIN, LOG_TAG, 'prepare exception: %{public}s', (e as Error).message);
@@ -289,6 +441,17 @@ export class AliPlayerProxy {
   play(): void {
     if (this.avPlayer === null) {
       return;
+    }
+    // 播放完成后再次播放: AVPlayer completed 状态下 seek(0) + play 即可重新起播,
+    // 进度条随之归零 (对齐阿里云播放器语义)。
+    if (this.currentState === 'completed') {
+      try {
+        this.avPlayer.seek(0, media.SeekMode.SEEK_PREV_SYNC);
+        this.doPlay();
+        return;
+      } catch (e) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'play after completed exception: %{public}s', (e as Error).message);
+      }
     }
     if (!this.isPrepared) {
       this.pendingPlay = true;
@@ -306,7 +469,7 @@ export class AliPlayerProxy {
         hilog.info(LOG_DOMAIN, LOG_TAG, 'play ok, playerId=%{public}s', this.playerId);
       }).catch((e: Error) => {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'play failed: %{public}s', e.message);
-        this.sendError(5400102, e.message, 'play failed');
+        this.sendError(this.errCodeOf(e), e.message, 'play failed');
       });
     } catch (e) {
       hilog.error(LOG_DOMAIN, LOG_TAG, 'play exception: %{public}s', (e as Error).message);
@@ -327,13 +490,34 @@ export class AliPlayerProxy {
     }
   }
 
-  /** stop */
+  /** stop: AVPlayer stop 后回到 idle, 需 reset + 重新 setUrl 才能再次播放。
+   *  对齐阿里云语义: stop 后 play() 应可重新起播。 */
   stop(): void {
     if (this.avPlayer === null) {
       return;
     }
+    const savedUrl = this.url;
+    this.isPrepared = false;
     try {
-      this.avPlayer.stop().catch((e: Error) => {
+      this.avPlayer.stop().then(() => {
+        hilog.info(LOG_DOMAIN, LOG_TAG, 'stop ok, resetting, playerId=%{public}s', this.playerId);
+        this.avPlayer!.reset().then(() => {
+          this.currentState = 'idle';
+          // reset 后 AVPlayer 回到全新状态, 首次 surfaceId 赋值须重新走 initialized
+          this.surfaceIdApplied = false;
+          if (savedUrl !== null) {
+            try {
+              this.avPlayer!.url = savedUrl;
+              // 重新 prepare (initialized 到达后由 pendingPrepare 触发)
+              this.prepare();
+            } catch (e) {
+              hilog.error(LOG_DOMAIN, LOG_TAG, 'stop re-setUrl failed: %{public}s', (e as Error).message);
+            }
+          }
+        }).catch((e: Error) => {
+          hilog.error(LOG_DOMAIN, LOG_TAG, 'stop reset failed: %{public}s', e.message);
+        });
+      }).catch((e: Error) => {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'stop failed: %{public}s', e.message);
       });
     } catch (e) {
@@ -352,6 +536,8 @@ export class AliPlayerProxy {
       this.avPlayer.reset().then(() => {
         hilog.info(LOG_DOMAIN, LOG_TAG, 'reload reset ok, re-setUrl, playerId=%{public}s', this.playerId);
         this.currentState = 'idle';
+        // reset 后 AVPlayer 回到全新状态, 首次 surfaceId 赋值须重新走 initialized
+        this.surfaceIdApplied = false;
         try {
           this.avPlayer!.url = savedUrl;
         } catch (e) {
@@ -400,6 +586,16 @@ export class AliPlayerProxy {
       return;
     }
     this.released = true;
+    // 释放 Alpha 合成渲染器
+    if (this.alphaRendererHandle !== '') {
+      try {
+        alphaCompositor.destroyRenderer(this.alphaRendererHandle);
+      } catch (e) {
+        hilog.warn(LOG_DOMAIN, LOG_TAG, 'destroy alpha renderer failed: %{public}s', (e as Error).message);
+      }
+      this.alphaRendererHandle = '';
+      this.alphaMode = 0;
+    }
     if (this.avPlayer !== null) {
       try {
         await this.avPlayer.release();
@@ -525,6 +721,17 @@ export class AliPlayerProxy {
     } catch (e) {
       hilog.warn(LOG_DOMAIN, LOG_TAG, 'setScalingMode failed: %{public}s', (e as Error).message);
     }
+    // Alpha 模式下 AVPlayer 输出到离屏面, 实际呈现由合成器决定:
+    // 合成器的缩放基准是"合成后半幅尺寸", 需同步转发, 否则缩放不生效。
+    if (this.alphaRendererHandle !== '') {
+      try {
+        alphaCompositor.setScalingMode(this.alphaRendererHandle, mode);
+        this.scalingMode = mode;
+      } catch (e) {
+        hilog.warn(LOG_DOMAIN, LOG_TAG, 'setScalingMode on compositor failed: %{public}s',
+          (e as Error).message);
+      }
+    }
   }
 
   getScalingMode(): number {
@@ -573,7 +780,7 @@ export class AliPlayerProxy {
       return 0;
     }
     try {
-      return this.avPlayer.width;
+      return this.toReportedSize(this.avPlayer.width, this.avPlayer.height)[0];
     } catch (e) {
       return 0;
     }
@@ -584,10 +791,42 @@ export class AliPlayerProxy {
       return 0;
     }
     try {
-      return this.avPlayer.height;
+      return this.toReportedSize(this.avPlayer.width, this.avPlayer.height)[1];
     } catch (e) {
       return 0;
     }
+  }
+
+  /**
+   * 把源视频显示尺寸推给合成器。
+   * 合成器无法自行获取该尺寸: 离屏 producer 窗口的 GET_BUFFER_GEOMETRY 实测恒为 0x0,
+   * 而 AVPlayer.width/height 是权威值 (且已含旋转元数据修正)。
+   */
+  private pushVideoSizeToCompositor(width: number, height: number): void {
+    if (this.alphaRendererHandle === '' || width <= 0 || height <= 0) {
+      return;
+    }
+    try {
+      alphaCompositor.setVideoSize(this.alphaRendererHandle, width, height);
+    } catch (e) {
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'setVideoSize on compositor failed: %{public}s',
+        (e as Error).message);
+    }
+  }
+
+  /**
+   * 对外上报的视频尺寸。AVPlayer 给出的是原始(拼接后)帧尺寸; Alpha 模式下可见内容
+   * 只占半幅 (mode=1/2 取左右半 → 宽减半; mode=3/4 取上下半 → 高减半),
+   * 因此对外报合成后尺寸, 保证业务按返回尺寸计算宽高比/布局时与画面一致。
+   */
+  private toReportedSize(fullWidth: number, fullHeight: number): number[] {
+    if (this.alphaMode === 1 || this.alphaMode === 2) {
+      return [Math.floor(fullWidth / 2), fullHeight];
+    }
+    if (this.alphaMode === 3 || this.alphaMode === 4) {
+      return [fullWidth, Math.floor(fullHeight / 2)];
+    }
+    return [fullWidth, fullHeight];
   }
 
   // ============== 轨道管理 (P1) ==============
@@ -669,5 +908,11 @@ export class AliPlayerProxy {
     data.set('errorExtra', extra);
     data.set('errorMsg', msg);
     this.emitEvent(data);
+  }
+
+  /** 提取 MediaKit 业务错误码 (BusinessError.code); 无 code 时回退 5400102 */
+  private errCodeOf(e: Error): number {
+    const code = (e as MediaErrorLike).code;
+    return typeof code === 'number' ? code : 5400102;
   }
 }
