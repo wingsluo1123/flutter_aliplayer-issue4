@@ -6,8 +6,7 @@
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
     "deviceTypes": [
-      "phone",
-      "tablet"
+      "phone"
     ],
     "deliveryWithInstall": true,
     "installationFree": false,
@@ -35,22 +34,16 @@
       }
     ],
     "requestPermissions": [
-      {"name" :  "ohos.permission.INTERNET"},
+      {"name" :  "ohos.permission.INTERNET"}
     ],
-    // 阿里云播放器 SDK License (官方要求 key 全小写)。
-    // licensekey: 控制台 License管理 页顶部复制的 License Key;
-    // licensefile: 证书文件名, 对应 resources/rawfile/license.crt。
-    // 注: License 与应用 bundleName 一一绑定, 本工程 bundleName 为
-    // com.alibaba.fplayer.flutter_aliplayer_example。
-    // 请替换为你自己申请的 License Key 与证书 (见 README.OpenHarmony_CN.md 第一节)。
     "metadata": [
       {
         "name": "com.aliyun.alivc_license.licensekey",
-        "value": "请替换为你的 License Key"
+        "value": "<YOUR_ALIYUN_PLAYER_LICENSE_KEY>"
       },
       {
         "name": "com.aliyun.alivc_license.licensefile",
-        "value": "license.crt"
+        "value": "ohosLicense.crt"
       }
     ]
   }

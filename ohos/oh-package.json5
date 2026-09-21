@@ -1,11 +1,17 @@
 {
   "name": "flutter_aliplayer",
-  "version": "1.0.0",
-  "description": "Please describe the basic information.",
+  "version": "7.14.0",
+  "description": "阿里云视频播放器 Flutter 插件 - HarmonyOS 适配",
   "main": "index.ets",
   "author": "",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "dependencies": {
-    "premierlibrary": "file:./libs/premierlibrary.har"
-  }
+    // Flutter OHOS 框架（必需）
+    // 由 Flutter 构建工具自动注入，无需手动添加
+    
+    // 阿里云播放器 SDK - HAR 包形式
+    "premierlibrary": "file:./libs/premierlibrary.har",
+    "aliyunplayersharedcpplibrary": "file:./libs/aliyunPlayerSharedCpplibrary.har"
+  },
+  "devDependencies": {}
 }
