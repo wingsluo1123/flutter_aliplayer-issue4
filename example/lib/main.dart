@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_aliplayer/flutter_aliplayer.dart';
@@ -35,10 +36,25 @@ class _MyAppState extends State<MyApp> {
   // 这是设备媒体内核的格式能力差异, 与插件无关; Android/iOS 侧无此限制。
   // 因此改用 AVPlayer 明确支持的 MP4 源。
   // 如需复现该限制, 取消上面注释并替换下面的 URL 即可。
-  // Alpha 透明通道演示源 (可选): 左半 RGB + 右半灰度蒙版 (黑=透明, 白=不透明)。
-  // 想看透出效果时换成它, 然后点 Alpha 按钮。
-  // 例: 'http://<你的主机>:8899/alpha_test.mp4'
-  final String _testUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
+  // 普通源 (非 Alpha), 用于对比直出与合成路径。
+  final String _normalUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
+
+  // Alpha 透明通道演示源: 1440x960, 左半灰度蒙版 + 右半彩色。
+  // 用 "换 Alpha 源" 按钮切换到它, 再点 Alpha 按钮观察合成效果。
+  // 也可换成自建素材, 例: 'http://<你的主机>:8899/alpha_test.mp4'
+  final String _alphaUrl =
+      'https://static.jtsee.com/app_media/video/mp4/us/alysa_split/split_5989.mp4';
+
+  // 本地文件源 (issue #4 阻塞点 #1: 旧实现在 file:// 上返回 onError 401)。
+  // 迁移到官方 SDK 后原生支持 file:// 本地视频。
+  // 首次点击「本地文件」时由本页下载到应用沙箱, 不依赖任何预置文件。
+  final String _localFileName = 'aliplayer_local_test.mp4';
+  // 鸿蒙应用沙箱 files 目录 (由 bundleName 决定, 见 module.json5)
+  final String _localDir =
+      '/data/storage/el2/base/haps/entry/files';
+
+  // 当前播放源; 由 "换 Alpha 源" 按钮切换后重新 prepare。
+  String _testUrl = '';
 
   // Alpha 透明通道渲染演示: mode=0 关闭 (直出 XComponent), mode=1-4 开启合成。
   // 开启后合成画面由 Flutter Texture 承载, 需用 Texture widget 显示 (见 build)。
@@ -48,14 +64,32 @@ class _MyAppState extends State<MyApp> {
   int _videoWidth = 0;
   int _videoHeight = 0;
 
+  // stop() 在原生侧是异步的 (stop -> reset -> 重新 setUrl -> prepare),
+  // Dart 侧 await stop() 只等到方法调用返回, 不等 AVPlayer 真正回到 idle。
+  // 若此时立刻 setUrl, AVPlayer 会报 "current state is not idle, unsupport set url"
+  // 并沿用旧源 —— 必须等状态回调里的 idle 再换源。
+  Completer<void>? _stopCompleter;
+
   @override
   void initState() {
     super.initState();
+    // 默认直接加载 Alpha 拼接源: 验收场景 (issue #3 反馈) 就是用它,
+    // 免去每次先点「Alpha 源」再点 mode 的操作步骤。
+    _testUrl = _alphaUrl;
     _initPlayer();
   }
 
   void _initPlayer() {
     _player = FlutterAliPlayerFactory.createAliPlayer();
+    _player!.setOnStateChanged((int newState, String playerId) {
+      // AVPlayer 回到 idle 才算 stop 真正完成, 此时才允许 setUrl 换源
+      if (newState == FlutterAvpdef.idle) {
+        final c = _stopCompleter;
+        if (c != null && !c.isCompleted) {
+          c.complete();
+        }
+      }
+    });
     _player!.setOnPrepared((String playerId) {
       setState(() {
         _isPrepared = true;
@@ -186,6 +220,93 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  /// 切换播放源 (普通源 / Alpha 拼接源) 并重新 prepare。
+  ///
+  /// 切换前先关闭 Alpha 合成 (mode=0): 不同源的分辨率与半区方向都不同,
+  /// 沿用旧 mode 会让纹理尺寸与上报尺寸的对应关系难以判读。
+  Future<void> _switchSource(bool useAlpha) async {
+    await _switchToUrl(useAlpha ? _alphaUrl : _normalUrl,
+        useAlpha ? 'switch -> alpha source' : 'switch -> normal source');
+  }
+
+  /// 切换到本地文件源 (验证 issue #4 阻塞点 #1: 旧实现 file:// 返回 onError 401)。
+  ///
+  /// 复刻真实链路「先下载到沙箱, 再播本地文件」: 首次点击时把测试素材下载到
+  /// 应用沙箱, 之后直接以 file:// 播放。不依赖任何预置文件。
+  Future<void> _switchToLocal() async {
+    final localPath = '$_localDir/$_localFileName';
+    final localUrl = 'file://$localPath';
+    final f = File(localPath);
+    try {
+      if (!f.existsSync() || f.lengthSync() == 0) {
+        setState(() {
+          _statusText = 'downloading to sandbox...';
+          _errorMsg = '';
+        });
+        await _downloadTo(_alphaUrl, localPath);
+      }
+      if (!mounted) return;
+      await _switchToUrl(localUrl, 'switch -> local file');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMsg = '本地文件准备失败: $e');
+    }
+  }
+
+  /// 下载 [url] 到沙箱 [savePath]。
+  ///
+  /// 直接用 dart:io 的 HttpClient 写沙箱文件 —— 应用对自身 files 目录有写权限,
+  /// 无需额外插件。这也是接入方「先下载再播本地文件」链路的等价实现。
+  Future<void> _downloadTo(String url, String savePath) async {
+    final client = HttpClient();
+    try {
+      final req = await client.getUrl(Uri.parse(url));
+      final resp = await req.close();
+      if (resp.statusCode != 200) {
+        throw Exception('HTTP ${resp.statusCode}');
+      }
+      final file = File(savePath);
+      await file.parent.create(recursive: true);
+      final sink = file.openWrite();
+      await resp.forEach((chunk) => sink.add(chunk));
+      await sink.close();
+      debugPrint('downloaded $url -> $savePath (${file.lengthSync()} bytes)');
+    } finally {
+      client.close();
+    }
+  }
+
+  /// 同实例换源 (验证 issue #4 阻塞点 #2: 旧实现会静默失败沿用旧源)。
+  Future<void> _switchToUrl(String target, String statusText) async {
+    if (target == _testUrl) {
+      return;
+    }
+    try {
+      if (_alphaMode != 0) {
+        await _setAlphaMode(0);
+      }
+      // 迁移后: 官方 SDK 的 stop 为同步调用, 状态机自行管理, 不再需要
+      // 等 idle 回调 (旧 AVPlayer 实现才需要)。此处保留 stop 以保证语义一致。
+      await _player!.stop();
+      if (!mounted) return;
+      setState(() {
+        _testUrl = target;
+        _isPrepared = false;
+        _isPlaying = false;
+        _videoWidth = 0;
+        _videoHeight = 0;
+        _statusText = statusText;
+        _errorMsg = '';
+      });
+      await _player!.setUrl(target);
+      await _player!.prepare();
+    } catch (e) {
+      _stopCompleter = null;
+      if (!mounted) return;
+      setState(() => _errorMsg = '切换源失败: $e');
+    }
+  }
+
   /// 切换横竖屏。
   ///
   /// 在 Alpha 模式 (mode=1-4) 下点此按钮, 可观察合成画面随窗口旋转的表现。
@@ -277,8 +398,16 @@ class _MyAppState extends State<MyApp> {
                     ),
                   ),
                   if (_textureId != null && _textureId! > 0)
-                    Positioned.fill(
-                      child: Texture(textureId: _textureId!),
+                    // 验收标准用法: 直接用 getVideoWidth/Height 上报的尺寸作为
+                    // Texture 的宽高比。修复后纹理 buffer 几何等于合成尺寸,
+                    // 该比例即真实内容比例, 不应出现压扁/拉伸。
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio: _videoWidth > 0 && _videoHeight > 0
+                            ? _videoWidth / _videoHeight
+                            : 16 / 9,
+                        child: Texture(textureId: _textureId!),
+                      ),
                     ),
                 ],
               ),
@@ -344,6 +473,46 @@ class _MyAppState extends State<MyApp> {
               ],
             ),
             const SizedBox(height: 6),
+            // 源切换: 普通源 ↔ Alpha 拼接源 (1440x960, 左半灰度蒙版 + 右半彩色)。
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: () => _switchSource(false),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        _testUrl == _normalUrl ? Colors.blue.shade600 : null,
+                    foregroundColor:
+                        _testUrl == _normalUrl ? Colors.white : null,
+                  ),
+                  child: const Text('普通源'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () => _switchSource(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        _testUrl == _alphaUrl ? Colors.blue.shade600 : null,
+                    foregroundColor:
+                        _testUrl == _alphaUrl ? Colors.white : null,
+                  ),
+                  child: const Text('Alpha 源'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _switchToLocal,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _testUrl.startsWith('file://')
+                        ? Colors.blue.shade600
+                        : null,
+                    foregroundColor:
+                        _testUrl.startsWith('file://') ? Colors.white : null,
+                  ),
+                  child: const Text('本地文件'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             // Alpha 模式显式选择 (0-4):
             // 1=alpha在右 2=左 3=上 4=下, 透明处透出下方红色垫层; 0=关闭合成。
             Row(
@@ -383,6 +552,7 @@ class _MyAppState extends State<MyApp> {
                 '  - 红色垫层: Alpha 画面透明处会透出红色\n'
                 '  - mode=1-4 可在 onCreated 之后任意时刻调用 (prepare 前后均可)\n'
                 '  - getVideoWidth/Height 返回合成后(可见内容)尺寸, 半幅模式为原始的一半\n'
+                '  - Texture 的宽高比直接用 getVideoWidth/Height 上报尺寸即可 (buffer 几何随合成尺寸)\n'
                 '  - setScalingMode 的缩放基准是合成后半幅尺寸\n'
                 '  - 横竖屏旋转已按 transform 矩阵校准显示尺寸\n'
                 '• 不支持: VidSts/VidAuth(需应用层解析URL)/ARTC/DRM/FairPlay/HttpDNS/悬浮窗/下载/预加载\n'
@@ -390,7 +560,8 @@ class _MyAppState extends State<MyApp> {
                 '• 格式限制: AVPlayer 不支持部分 HLS(.m3u8) 源\n'
                 '  - Apple bipbop 测试流在本设备报 5400106 (Unsupported Format, CONTAINER_ERR)\n'
                 '  - 属设备媒体内核格式能力差异, 与插件无关; 故测试源改用 MP4 (H.264+AAC)\n'
-                '• 测试源: https://vjs.zencdn.net/v/oceans.mp4\n'
+                '• 普通源: https://vjs.zencdn.net/v/oceans.mp4\n'
+                '• Alpha 源: split_5989.mp4 (1440x960, 左半灰度蒙版 + 右半彩色)\n'
                 '• 当前: alpha=$_alphaMode textureId=$_textureId '
                 'video=${_videoWidth}x$_videoHeight',
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
