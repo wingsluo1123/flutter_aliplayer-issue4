@@ -1,11 +1,9 @@
 {
   "apiType": "stageMode",
-  "buildOption": {
-    "externalNativeOptions": {
-      "path": "./src/main/cpp/CMakeLists.txt",
-      "abiFilters": ["arm64-v8a"]
-    }
-  },
+  // 迁移说明 (issue #4): 原 externalNativeOptions 用于编译自研 Alpha 合成器
+  // (libalpha_compositor.so)。改用官方 SDK 后 Alpha 由 SDK 内部合成,
+  // 该 native 模块与 CMake 接入已整体移除。
+  "buildOption": {},
   "targets": [
     {
       "name": "default"

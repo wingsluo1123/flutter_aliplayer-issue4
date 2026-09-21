@@ -31,3 +31,12 @@ migrate_working_dir/
 .flutter-plugins
 .flutter-plugins-dependencies
 build/
+
+# OpenHarmony / 阿里云播放器 SDK
+# 开发过程产物（技术报告、真机截图、日志），不随插件分发
+.ohos-adaptation/
+# 阿里云商业 SDK 二进制（premierlibrary.har 及 libc++_shared.so），
+# 请自行从官网下载，见 README.OpenHarmony_CN.md「引入官方 SDK HAR」
+ohos/libs/
+# 真实 License 证书：与应用 bundleName 绑定，属授权凭据，不应入库
+**/rawfile/license.crt
