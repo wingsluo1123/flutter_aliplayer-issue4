@@ -1,92 +1,110 @@
 # OpenHarmony（鸿蒙）适配说明
 
-本文档描述 `flutter_aliplayer` 插件在 OpenHarmony / HarmonyOS 平台的能力与差异。鸿蒙侧播放器基于 MediaKit `AVPlayer` 实现（见 `ohos/` 目录），替代 Android / iOS 使用的阿里云播放器 SDK。
+本文档描述 `flutter_aliplayer` 插件在 OpenHarmony / HarmonyOS 平台的接入方式与能力边界。
 
-## 透明通道视频渲染（AlphaRenderMode）— 已支持
+鸿蒙侧使用阿里云官方 HarmonyOS 播放器 SDK `premierlibrary` 7.14.0，通过本插件保留现有 Flutter/Dart API 和 MethodChannel 协议。SDK HAR 位于 `ohos/libs/`，插件会通过 `ohos/oh-package.json5` 自动声明依赖，宿主应用不需要再次复制 HAR 或 native 库。
 
-鸿蒙侧已实现透明通道视频合成渲染（issue #3 问题一），采用 **Flutter Texture 路径**：AVPlayer 输出到离屏 surface，由 C++（EGL/GLES）shader 按模式采样 RGB 半区与 Alpha 半区合成，合成结果经 `TextureRegistry` 作为 Flutter 纹理输出——透明区域能正确透出下层 Flutter Widget。
+## License 要求
 
-> 为何不用 XComponent + GLES：XComponent 的 SURFACE 是原生 surface，真机实验证明它不参与 Flutter 的 alpha 合成，透明区无法透出下层 Widget，因此改用 Texture 路径。
+`flutter_aliplayer` 是基于阿里云播放器 SDK 的商业化插件。使用 HarmonyOS 官方播放器 SDK 前，宿主应用必须向阿里云申请有效的播放器 License；License 不是插件仓库提供的免费资源，也不能使用其他应用的 License 证书或 License key。
 
-相关实现文件：
+License 必须与宿主应用的 `bundleName` 匹配，并在宿主的 `entry/src/main/module.json5` 中配置：
 
-| 文件 | 职责 |
-| --- | --- |
-| `ohos/src/main/cpp/AlphaCompositeRenderer.cpp/.h` | 合成核心：按 mode 切分半区、shader 预乘 alpha、旋转校准、缩放 |
-| `ohos/src/main/cpp/AlphaCompositorNapi.cpp` | NAPI 导出：createRenderer / setMode / setVideoSize / setScalingMode / getComposedSize / getProducerSurfaceId / destroyRenderer |
-| `ohos/types/libalpha_compositor/index.d.ts` | ArkTS 类型声明 |
-| `ohos/src/main/ets/components/plugin/AliPlayerProxy.ets` | surfaceId 重放、合成尺寸上报、缩放转发 |
-| `ohos/src/main/ets/components/plugin/FlutterAliplayerPlugin.ets` | 方法分发、textureId 返回、错误返回 |
-
-### 支持的模式
-
-| mode | 含义 |
-| --- | --- |
-| 0 | 无 Alpha，AVPlayer 直出 XComponent surface（默认路径，零开销） |
-| 1 | Alpha 在画面**右侧**（左半 RGB + 右半灰度蒙版） |
-| 2 | Alpha 在画面**左侧** |
-| 3 | Alpha 在画面**上侧** |
-| 4 | Alpha 在画面**下侧** |
-
-### 用法（OHOS）
-
-```dart
-// mode=1-4: 开启 Alpha 合成, 返回 textureId 用于 Texture widget 显示
-final ret = await player.setAlphaRenderMode(1);
-final textureId = (ret as Map?)?['textureId'] as int?;
-if (textureId != null && textureId > 0) {
-  // 用 Texture widget 显示合成画面（可叠放在任意 Widget 之上）
-  Texture(textureId: textureId);
-}
-
-// mode=0: 切回普通直出渲染（释放合成纹理）
-await player.setAlphaRenderMode(0);
-
-// 查询当前模式
-final mode = await player.getAlphaRenderMode(); // 兼容 getAlPhaRenderMode 历史拼写
+```json5
+"metadata": [
+  {
+    "name": "com.aliyun.alivc_license.licensekey",
+    "value": "<YOUR_ALIYUN_PLAYER_LICENSE_KEY>"
+  },
+  {
+    "name": "com.aliyun.alivc_license.licensefile",
+    "value": "ohosLicense.crt"
+  }
+]
 ```
 
-注意事项：
+将阿里云签发的证书放到：
 
-- `setAlphaRenderMode(1-4)` 需在渲染视图创建（`onCreated`）之后调用；`prepare` 前后均可，若在 `prepared` 之后调用，surfaceId 切换会在允许赋值的状态自动重放，无需手动重试；
-- **Alpha 模式下必须隐藏 `AliPlayerView` / `XComponent`**：XComponent 是原生 SURFACE，不参与 Flutter 的 alpha 合成，若与 `Texture` 同时显示会盖住合成结果，导致透明区透不出来。典型写法是用 `Visibility(visible: textureId == null)` 包裹 `AliPlayerView`；
-- 播放中切换 mode 即时生效（shader uniform 热更新）；
-- 视频源需为对应模式的 RGB+Alpha 拼接格式（如左半彩色内容 + 右半灰度蒙版）；
-- `getVideoWidth/Height` 与 `onVideoSizeChanged` 返回的是**合成后（可见内容）尺寸**，半幅模式（1/2 取左右半、3/4 取上下半）为原始拼接尺寸的一半，与 Android SDK 语义一致；
-- `setScalingMode` 的缩放基准是合成后的半幅尺寸，而非原始拼接尺寸（FIT 留黑边 / FILL 裁切 / TO_FILL 拉伸）；
-- 横竖屏旋转：按 `OH_NativeImage` 的 transform 矩阵校准显示尺寸，旋转 90/270 时显示宽高与 buffer 宽高互换后参与宽高比计算。
+```text
+entry/src/main/resources/rawfile/ohosLicense.crt
+```
 
-### 已验证（真机 HAD-W32 / HarmonyOS 7.0.0.105 / API 26）
+仓库中的 `example/ohos` 仅展示配置结构，License key 使用占位符，证书文件被 `.gitignore` 忽略。实际应用必须替换为自己的 License key 和证书；不能直接使用示例占位符，也不能把真实 License、证书或签名材料提交到代码仓库。
 
-验证方法：使用「左半 RGB 四象限色块 + 右半灰度蒙版」的拼接素材，对真机截图做像素级判定——蒙版不透明区应显示对应象限的 RGB 颜色，透明区应透出下层红色垫层（`rgb(244,66,54)`）。
+参考文档：
 
-| 验收项 | 结果 |
-| --- | --- |
-| mode=1/2/3/4 只显示 RGB 内容，透明区透出下层 Widget | 通过。mode=1 时蒙版不透明区显示对应 RGB 颜色、其余透出红色垫层；mode=3（Alpha 在上半）时左半透出垫层、右半显示不透明内容，方向语义正确 |
-| mode=0 行为与当前一致 | 通过。`textureId` 释放为 null，尺寸回到全幅拼接尺寸，画面直出 XComponent，无合成开销 |
-| `getAlphaRenderMode()` 返回最近一次设置的值 | 通过。逐一点选 0/1/3 回读均一致 |
-| 播放中切换 mode、`prepare` 前后设置 mode 均生效 | 通过。播放中切换即时生效；`prepare` 之前设置同样生效；`prepare` 之后调用走 surfaceId 延后重放 |
-| 横竖屏下合成画面不错位 | 通过。竖屏（1320x2848）与横屏（2848x1320）下，不透明区均固定在同一方位，无翻转 / 拉伸 / 裁切 |
+- [阿里云播放器 License 接入](https://help.aliyun.com/zh/vod/developer-reference/access-to-license)
+- [HarmonyOS 播放器 SDK 集成指南](https://help.aliyun.com/zh/vod/developer-reference/integrated-harmonyos-next-player-sdk)
+- [HarmonyOS 播放器 SDK 快速开始](https://help.aliyun.com/zh/vod/developer-reference/quick-start-for-player-harmonyos-sdk)
 
-其他：播放稳定无崩溃；纹理持续出帧（`OHOSExternalTexture::MarkNewFrameAvailable` 序号递增）。
+## HarmonyOS 应用签名
 
-### 已知限制
+License 与 HarmonyOS 应用签名是两套独立配置：
 
-- 上述横竖屏验证在 2in1 形态设备（HAD-W32）上完成，通过窗口旋转触发；**手机 / 平板的物理旋转建议自行复验一次**（2in1 桌面形态固定横屏，系统可能拒绝旋转请求）；
-- HLS（.m3u8）源在部分设备的 AVPlayer 上不受支持（`CONTAINER_ERR` / 5400106），与 Alpha 渲染无关，属设备媒体内核格式能力差异。
+- License 用于阿里云播放器 SDK 授权。
+- `signingConfig` 用于允许 HAP 安装到真机。
 
-## 其他能力差异
+使用 DevEco Studio 打开 `example/ohos`，在 Project Structure 的 Signing 页面配置本机调试签名，然后构建带签名的 HAP。未签名的 `entry-default-unsigned.hap` 不能直接安装到真实设备。
 
-部分依赖阿里云播放器 SDK 原生能力的接口暂不支持。调用不支持的接口时，Dart 侧会抛出 `PlatformException(code: UNSUPPORTED)`，请 catch 后降级：
+## 安装依赖与构建
 
-| 接口 | 状态 | 说明 |
+使用 Flutter 示例工程：
+
+```bash
+cd example
+flutter pub get
+flutter build hap --debug
+```
+
+也可以使用 DevEco Studio 打开以下目录：
+
+```text
+example/ohos
+```
+
+构建前需要：
+
+1. 在 `entry/src/main/module.json5` 配置宿主应用自己的 License。
+2. 将对应的 `ohosLicense.crt` 放入 `entry/src/main/resources/rawfile/`。
+3. 配置 DevEco 调试签名并为 `default` product 选择该签名。
+4. 在 HarmonyOS 真机上验证播放、渲染、生命周期和网络行为。
+
+## 透明视频与 AlphaRenderMode
+
+官方播放器 SDK 已提供 Alpha 渲染能力，插件侧不再实现独立的 C++ Alpha 合成器。透明画面的合成由官方 SDK 完成，插件负责将播放器输出接入 Flutter 的 PlatformView。
+
+官方 SDK 对 Alpha 渲染有两个关键要求：
+
+- 显示视图必须使用 `XComponentType.TEXTURE`；官方文档明确指出，使用其他类型可能出现背景色，透明礼物动效无法正确透出。
+- 应在 XComponent 的 `onLoad` 回调中调用 `setAlphaRenderMode`，然后调用 `setUrlDataSource`，并通过 `setSurfaceId(...)` 绑定输出 surface。
+
+HarmonyOS 的 XComponent 是通过 Flutter PlatformView 嵌入 Flutter Widget 树的。`SURFACE` 类型输出属于原生 surface，不能按 Flutter Widget 的方式与下层 Flutter 内容进行透明合成；因此 Alpha 场景必须确认最终输出使用官方 SDK 要求的 `TEXTURE` 类型，并避免同时显示会覆盖 Texture 输出的原生 Surface 视图。
+
+插件保留 Dart 侧的 Alpha API：
+
+```dart
+await player.setAlphaRenderMode(1);
+final mode = await player.getAlphaRenderMode();
+```
+
+具体 Alpha 模式、素材格式、XComponent 类型和 surface 绑定顺序应以当前版本阿里云 HarmonyOS SDK 官方文档为准。若需要将官方 SDK 的合成结果直接输出到 Flutter `Texture(textureId: ...)`，还需要确认阿里云 SDK 是否允许把 Flutter TextureRegistry 生产者的 `surfaceId` 作为 `setSurfaceId` 参数，以及该 surface 是否满足 SDK 对 XComponent、像素格式和 buffer 生命周期的要求；当前插件未宣称这一点已经得到官方 SDK 支持。
+
+## 当前支持的官方 SDK 桥接能力
+
+| 能力 | 状态 | 说明 |
 | --- | --- | --- |
-| `setRotateMode` / `getRotateMode` | 静默忽略 | 可通过外层 Widget `Transform.rotate` 实现 |
-| `setMirrorMode` / `getMirrorMode` | 静默忽略 | 可通过外层 Widget `Transform` 实现 |
-| `setVideoBackgroundColor` | 静默忽略 | 可通过容器 Widget 背景色实现 |
-| `setOutputAudioChannel` | 静默忽略 | — |
+| 单播放器 | 支持 | 使用官方 HarmonyOS 播放器 SDK |
+| 列表播放器 | 支持 | 保留现有 Flutter API 和事件协议 |
+| 时移播放器 | 支持 | 使用官方 SDK 对应能力 |
+| MediaLoader / MediaLoaderV2 | 支持 | 通过 MethodChannel 转发 |
+| 下载器 | 支持 | 通过 MethodChannel 转发 |
+| 全局设置 | 支持 | 通过 MethodChannel 转发 |
+| AlphaRenderMode | 已桥接 | 具体透明合成效果依赖官方 SDK 的 Texture/XComponent 约束 |
 
-## 播放控制行为说明（与 Android/iOS 对齐的修复）
+部分只存在于 Android/iOS 原生 SDK 的接口在 HarmonyOS 上可能不支持。调用不支持的接口时，Dart 侧会收到 `PlatformException(code: UNSUPPORTED)`，应用应捕获并降级。
 
-- **stop 后可重新播放**：`stop()` 内部会 reset 并重新 setUrl + prepare（AVPlayer stop 后不允许直接 prepare），不会出现 5400102 状态错误；
-- **播放完成后再次播放**：`play()` 在 completed 状态下自动 seek(0) 重新起播，进度条归零。
+## 播放控制行为
+
+- `stop()` 后可以重新播放：插件会按 HarmonyOS AVPlayer 状态要求重新设置 URL 并 prepare。
+- 播放完成后再次 `play()`：插件会回到起始位置并重新播放。
+- 真实设备验证必须使用有效 License、带签名的 HAP 和可访问的媒体地址；仅完成 ArkTS 编译不能代表播放器功能已验收。

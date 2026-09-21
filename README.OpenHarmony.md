@@ -1,92 +1,110 @@
-# OpenHarmony (HarmonyOS) Adaptation Notes
+# OpenHarmony / HarmonyOS Adaptation
 
-This document describes the capabilities of the `flutter_aliplayer` plugin on OpenHarmony / HarmonyOS. The OHOS-side player is implemented with MediaKit `AVPlayer` (see `ohos/`), instead of the AliyunPlayer SDK used on Android / iOS.
+This document describes how to integrate `flutter_aliplayer` on OpenHarmony / HarmonyOS and the current platform boundaries.
 
-## Transparent Video (Alpha Rendering) — Supported
+The HarmonyOS implementation uses Aliyun's official HarmonyOS player SDK, `premierlibrary` 7.14.0, while preserving the existing Flutter/Dart API and MethodChannel protocol. The SDK HAR files are stored under `ohos/libs/` and declared by `ohos/oh-package.json5`; host applications do not need to copy the HAR files or native libraries again.
 
-Alpha rendering is now implemented on OHOS (issue #3, Texture path): AVPlayer outputs to an offscreen surface consumed by `OH_NativeImage`, an OpenGL ES shader composites the RGB half and the Alpha half according to the mode, and the composited frames are exposed to Flutter as an external texture via `TextureRegistry`. Transparent areas correctly show underlying Flutter widgets.
+## License Requirement
 
-> Why not XComponent + GLES: the XComponent's SURFACE is a native surface and, as verified on device, does not participate in Flutter's alpha compositing — transparent areas cannot reveal the underlying widget. Hence the Texture path.
+`flutter_aliplayer` is a commercial plugin based on the Aliyun player SDK. A host application must obtain a valid Aliyun player License before using the official HarmonyOS player SDK. The License is not a free resource supplied by this repository, and a License certificate or key issued for another application must not be reused.
 
-Implementation files:
+The License must match the host application's `bundleName` and must be configured in the host `entry/src/main/module.json5`:
 
-| File | Responsibility |
-| --- | --- |
-| `ohos/src/main/cpp/AlphaCompositeRenderer.cpp/.h` | Compositing core: half-frame split per mode, premultiplied-alpha shader, rotation calibration, scaling |
-| `ohos/src/main/cpp/AlphaCompositorNapi.cpp` | NAPI exports: createRenderer / setMode / setVideoSize / setScalingMode / getComposedSize / getProducerSurfaceId / destroyRenderer |
-| `ohos/types/libalpha_compositor/index.d.ts` | ArkTS type declarations |
-| `ohos/src/main/ets/components/plugin/AliPlayerProxy.ets` | surfaceId replay, composited-size reporting, scaling forwarding |
-| `ohos/src/main/ets/components/plugin/FlutterAliplayerPlugin.ets` | Method dispatch, textureId return, error return |
-
-### Supported modes
-
-| mode | Meaning |
-| --- | --- |
-| 0 | No alpha: AVPlayer renders directly to the XComponent surface (default path, zero overhead) |
-| 1 | Alpha on the **right** (left half RGB + right half grayscale mask) |
-| 2 | Alpha on the **left** |
-| 3 | Alpha on the **top** |
-| 4 | Alpha on the **bottom** |
-
-### Usage (OHOS)
-
-```dart
-// mode 1-4: enable alpha compositing; returns textureId for the Texture widget
-final ret = await player.setAlphaRenderMode(1);
-final textureId = (ret as Map?)?['textureId'] as int?;
-if (textureId != null && textureId > 0) {
-  // Display the composited frames with a Texture widget (stackable over any widgets)
-  Texture(textureId: textureId);
-}
-
-// mode 0: switch back to direct rendering (releases the compositing texture)
-await player.setAlphaRenderMode(0);
-
-// Query current mode
-final mode = await player.getAlphaRenderMode(); // getAlPhaRenderMode legacy spelling also accepted
+```json5
+"metadata": [
+  {
+    "name": "com.aliyun.alivc_license.licensekey",
+    "value": "<YOUR_ALIYUN_PLAYER_LICENSE_KEY>"
+  },
+  {
+    "name": "com.aliyun.alivc_license.licensefile",
+    "value": "ohosLicense.crt"
+  }
+]
 ```
 
-Notes:
+Place the certificate issued by Aliyun at:
 
-- Call `setAlphaRenderMode(1-4)` after the render view is created (`onCreated`); it works both before and after `prepare` — if called after `prepared`, the surfaceId switch is replayed automatically once the state allows assignment, no manual retry needed;
-- **In alpha mode you must hide `AliPlayerView` / `XComponent`**: the XComponent is a native SURFACE and does not participate in Flutter's alpha compositing. If shown together with the `Texture`, it covers the composited output and the transparent areas stop showing through. The usual pattern is to wrap `AliPlayerView` in `Visibility(visible: textureId == null)`;
-- Switching modes during playback takes effect immediately (shader uniform hot update);
-- The video source must be an RGB+Alpha side-by-side (or stacked) stream matching the mode;
-- `getVideoWidth/Height` and `onVideoSizeChanged` report the **composited (visible-content) size**. In half-frame modes (1/2 = left/right half, 3/4 = top/bottom half) this is half the original side-by-side size, consistent with the Android SDK semantics;
-- `setScalingMode` scales against the composited half-frame size, not the original side-by-side size (FIT letterboxes / FILL crops / TO_FILL stretches);
-- Device rotation: display size is calibrated via the `OH_NativeImage` transform matrix — under a 90/270 rotation the display width/height are swapped with the buffer dimensions before the aspect ratio is computed.
+```text
+entry/src/main/resources/rawfile/ohosLicense.crt
+```
 
-### Verified on device (HAD-W32 / HarmonyOS 7.0.0.105 / API 26)
+`example/ohos` only demonstrates the configuration structure. The repository uses a placeholder License key and ignores the certificate file through `.gitignore`. A real application must replace the placeholder with its own License key and certificate. Real License material, certificates, and signing credentials must not be committed to the repository.
 
-Method: a side-by-side asset of "left half = RGB quadrants of solid colors, right half = grayscale mask" was played, and device screenshots were judged pixel by pixel — opaque mask areas must show the corresponding RGB quadrant color, transparent areas must reveal the red underlay below (`rgb(244,66,54)`).
+References:
 
-| Acceptance item | Result |
-| --- | --- |
-| mode=1/2/3/4 shows only RGB content; transparent areas reveal the underlying widget | Pass. With mode=1 the opaque mask area shows the corresponding RGB color while the rest reveals the red underlay; with mode=3 (alpha on the top half) the left half reveals the underlay and the right half shows opaque content — direction semantics correct |
-| mode=0 keeps the previous behavior | Pass. `textureId` is released to null, the size returns to the full side-by-side size, and frames go straight out through the XComponent with no compositing cost |
-| `getAlphaRenderMode()` returns the last value set | Pass. Read-back matched for every value selected (0/1/3) |
-| Switching mode during playback, and setting mode before/after `prepare`, both work | Pass. Switching during playback takes effect immediately; setting before `prepare` also works; calling after `prepare` goes through the deferred surfaceId replay |
-| Composited picture stays correctly oriented in portrait/landscape | Pass. In portrait (1320x2848) and landscape (2848x1320) the opaque area stays in the same position — no flip, stretch, or crop |
+- [Aliyun player License integration](https://help.aliyun.com/zh/vod/developer-reference/access-to-license)
+- [HarmonyOS player SDK integration guide](https://help.aliyun.com/zh/vod/developer-reference/integrated-harmonyos-next-player-sdk)
+- [HarmonyOS player SDK quick start](https://help.aliyun.com/zh/vod/developer-reference/quick-start-for-player-harmonyos-sdk)
 
-Other: stable playback without crashes; the texture keeps producing frames (`OHOSExternalTexture::MarkNewFrameAvailable` sequence increments).
+## HarmonyOS Application Signing
 
-### Known limitations
+The License and HarmonyOS application signing are independent configurations:
 
-- The portrait/landscape verification above was done on a 2-in-1 form-factor device (HAD-W32) driven by window rotation; **physical rotation on phones/tablets is still worth re-verifying yourself** (a 2-in-1 desktop form factor is locked to landscape and the system may reject rotation requests);
-- HLS (.m3u8) sources are not supported by AVPlayer on some devices (`CONTAINER_ERR` / 5400106) — a device media-kernel format limitation, unrelated to alpha rendering.
+- The License authorizes the Aliyun player SDK.
+- `signingConfig` allows a HAP to be installed on a real device.
 
-## Other Capability Differences
+Open `example/ohos` in DevEco Studio and configure a local debug signing profile from Project Structure > Signing. Then build a signed HAP. The unsigned `entry-default-unsigned.hap` cannot be installed directly on a real device.
 
-Some interfaces that rely on native AliyunPlayer SDK capabilities are not supported. Calling them throws `PlatformException(code: UNSUPPORTED)` on the Dart side; catch and degrade:
+## Dependency Installation and Build
 
-| Interface | Status | Notes |
+From the Flutter example project:
+
+```bash
+cd example
+flutter pub get
+flutter build hap --debug
+```
+
+You can also open this directory in DevEco Studio:
+
+```text
+example/ohos
+```
+
+Before building:
+
+1. Configure the host application's own License in `entry/src/main/module.json5`.
+2. Place the matching `ohosLicense.crt` in `entry/src/main/resources/rawfile/`.
+3. Configure a DevEco debug signing profile and select it for the `default` product.
+4. Verify playback, rendering, lifecycle, and network behavior on a HarmonyOS device.
+
+## Transparent Video and AlphaRenderMode
+
+The official player SDK provides Alpha rendering. The plugin no longer implements an independent C++ Alpha compositor. Alpha compositing is performed by the official SDK; the plugin is responsible for connecting the player output to the Flutter PlatformView.
+
+The official SDK has two important requirements for Alpha rendering:
+
+- The display view must use `XComponentType.TEXTURE`. The official documentation states that other types may produce a background color and prevent transparent gift effects from showing correctly.
+- Call `setAlphaRenderMode` in the XComponent `onLoad` callback, then call `setUrlDataSource`, and bind the output surface with `setSurfaceId(...)`.
+
+An XComponent is embedded into the Flutter Widget tree through a Flutter PlatformView. A `SURFACE` output is a native surface and cannot participate in Flutter Widget compositing in the same way as Flutter content. Therefore, Alpha scenarios must use the `TEXTURE` output required by the official SDK and must not display a native Surface view that covers the Texture output.
+
+The plugin keeps the Dart Alpha API:
+
+```dart
+await player.setAlphaRenderMode(1);
+final mode = await player.getAlphaRenderMode();
+```
+
+The exact Alpha modes, asset format, XComponent type, and surface-binding order must follow the official documentation for the installed Aliyun HarmonyOS SDK version. To output the SDK's composited result directly into a Flutter `Texture(textureId: ...)`, it must first be confirmed that the Aliyun SDK accepts the Flutter TextureRegistry producer's `surfaceId` as the `setSurfaceId` argument and that this surface satisfies the SDK's XComponent, pixel-format, and buffer-lifetime requirements. The current plugin does not claim that this is officially supported or verified.
+
+## Current Official SDK Bridge Coverage
+
+| Capability | Status | Notes |
 | --- | --- | --- |
-| `setRotateMode` / `getRotateMode` | Silently ignored | Use `Transform.rotate` on the wrapping Widget instead. |
-| `setMirrorMode` / `getMirrorMode` | Silently ignored | Use `Transform` on the wrapping Widget instead. |
-| `setVideoBackgroundColor` | Silently ignored | Set the background color of the container Widget instead. |
-| `setOutputAudioChannel` | Silently ignored | — |
+| Single player | Supported | Uses the official HarmonyOS player SDK |
+| List player | Supported | Preserves the existing Flutter API and event protocol |
+| Live-shift player | Supported | Uses the corresponding official SDK capability |
+| MediaLoader / MediaLoaderV2 | Supported | Forwarded through the MethodChannel |
+| Downloader | Supported | Forwarded through the MethodChannel |
+| Global settings | Supported | Forwarded through the MethodChannel |
+| AlphaRenderMode | Bridged | Final transparency behavior depends on the official SDK's Texture/XComponent constraints |
 
-## Playback Control Behavior (aligned with Android/iOS)
+Some interfaces that exist only in the Android/iOS native SDKs may not be supported on HarmonyOS. Unsupported calls return `PlatformException(code: UNSUPPORTED)` to Dart, and the application should catch and degrade gracefully.
 
-- **Replay after stop**: `stop()` internally resets and re-sets the URL + prepares (AVPlayer disallows prepare right after stop), avoiding the 5400102 state error;
-- **Replay after completion**: `play()` in the completed state automatically seeks to 0 and restarts, resetting the progress bar.
+## Playback Control Behavior
+
+- `stop()` can be followed by another playback: the plugin resets the player according to the HarmonyOS AVPlayer state requirements, sets the URL again, and prepares it.
+- Calling `play()` after completion seeks to the beginning and starts playback again.
+- Real-device verification requires a valid License, a signed HAP, and an accessible media URL; successful ArkTS compilation alone does not constitute player acceptance.
