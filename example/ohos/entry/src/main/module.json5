@@ -6,8 +6,7 @@
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
     "deviceTypes": [
-      "phone",
-      "tablet"
+      "phone"
     ],
     "deliveryWithInstall": true,
     "installationFree": false,
@@ -35,7 +34,17 @@
       }
     ],
     "requestPermissions": [
-      {"name" :  "ohos.permission.INTERNET"},
+      {"name" :  "ohos.permission.INTERNET"}
+    ],
+    "metadata": [
+      {
+        "name": "com.aliyun.alivc_license.licensekey",
+        "value": "<YOUR_ALIYUN_PLAYER_LICENSE_KEY>"
+      },
+      {
+        "name": "com.aliyun.alivc_license.licensefile",
+        "value": "ohosLicense.crt"
+      }
     ]
   }
 }

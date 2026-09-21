@@ -1,19 +1,13 @@
 /**
- * FlutterAliplayerPlugin
- *
- * 鸿蒙侧插件主入口, 实现:
- * - 5 个 MethodChannel: plugins.flutter_aliplayer_factory / flutter_alidownload /
- *   flutter_aliplayer_media_loader / flutter_aliplayer_loader_v2 / flutter_global_setting
- * - 4 个 EventChannel: flutter_aliplayer_event (主事件) + 3 个辅助事件流
- * - PlatformView: flutter_aliplayer_render_view (XComponent 渲染面)
- * - 多实例管理: 按 playerId 维护 AliPlayerProxy Map
- * - viewId ↔ surfaceId ↔ playerId 三向桥接
- *
- * 适配策略:
- * - P0 (已实现): 播放器生命周期/URL播放/播控/XComponent渲染/基础事件/缩放/音量/倍速/静音/循环
- * - P1 (部分实现): 轨道管理 getTrackDescription/selectTrack
- * - P3 (安全空实现): VidSts/VidAuth/VidMps/ARTC/DRM/FairPlay/HttpDNS/悬浮窗/下载/预加载等
+ * flutter_aliplayer 鸿蒙适配主入口
+ * 
+ * 本插件基于阿里云播放器鸿蒙 SDK 实现，支持：
+ * - 多播放器实例管理（单播放器、列表播放器、直播时移播放器）
+ * - 视频渲染（PlatformView + XComponent）
+ * - MethodChannel/EventChannel/BasicMessageChannel 多通信模式
+ * - 视频下载、媒体预加载、全局设置
  */
+
 import {
   FlutterPlugin,
   FlutterPluginBinding,
@@ -24,921 +18,1838 @@ import {
   EventChannel,
   EventSink,
   StreamHandler,
+  BinaryMessenger,
   AbilityAware,
   AbilityPluginBinding,
-  BinaryMessenger,
-  TextureRegistry,
-  SurfaceTextureEntry,
 } from '@ohos/flutter_ohos';
+
 import common from '@ohos.app.ability.common';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
-import { AliPlayerProxy } from './AliPlayerProxy';
-import { AliPlayerViewFactory, AliPlayerSurfaceRegistry, SurfaceIdCallback } from './AliPlayerViewFactory';
+import { AliPlayerViewFactory } from './AliPlayerViewFactory';
+import { AliPlayerInstanceManager } from './AliPlayerInstanceManager';
+import { AliDownloaderPlugin } from './AliDownloaderPlugin';
+import { AliMediaLoaderPlugin } from './AliMediaLoaderPlugin';
+import { AliMediaLoaderV2Plugin } from './AliMediaLoaderV2Plugin';
+import { AliGlobalSettingsPlugin } from './AliGlobalSettingsPlugin';
+import { AliLiveShiftPlayerInstance } from './AliLiveShiftPlayerInstance';
 
-/** 实现类暴露的 NativeWindow 指针获取方法 (旧版接口未声明, 本地接口中转) */
-interface NativeWindowPtrProvider {
-  getNativeWindowPtr: () => bigint;
-}
+const LOG_DOMAIN: number = 0xFF00;
+const LOG_TAG: string = 'FlutterAliplayer';
 
-const LOG_DOMAIN: number = 0x0001;
-const LOG_TAG: string = 'FlutterAliplayerPlugin';
-
-// Channel 名称 (与 Dart 侧严格一致)
-const CHANNEL_FACTORY: string = 'plugins.flutter_aliplayer_factory';
-const CHANNEL_DOWNLOAD: string = 'plugins.flutter_alidownload';
-const CHANNEL_MEDIA_LOADER: string = 'plugins.flutter_aliplayer_media_loader';
-const CHANNEL_LOADER_V2: string = 'plugins.flutter_aliplayer_loader_v2';
-const CHANNEL_GLOBAL_SETTING: string = 'plugins.flutter_global_setting';
-
-const EVENT_PLAYER: string = 'flutter_aliplayer_event';
-const EVENT_DOWNLOAD: string = 'plugins.flutter_alidownload_event';
-const EVENT_MEDIA_LOADER: string = 'flutter_aliplayer_media_loader_event';
-const EVENT_LOADER_V2: string = 'flutter_aliplayer_loader_v2_event';
-
-const VIEW_TYPE: string = 'flutter_aliplayer_render_view';
-
-/** 辅助 EventChannel 的空 StreamHandler */
-class NoopStreamHandler implements StreamHandler {
-  onListen(_args: Object, _events: EventSink): void {
-    // 下载/预加载事件流在鸿蒙侧暂不支持, 仅保持监听不崩溃
-  }
-  onCancel(_args: Object): void {
-    // no-op
-  }
-}
-
-/** 下载/预加载 MethodChannel 的空 handler (P3 安全空实现)。
- *  这些通道的方法名 (prepare/start/stop/selectItem/setSaveDir 等) 与播放器方法名重叠,
- *  必须用独立 handler 处理, 否则会被主 switch 误路由到播放器逻辑。 */
-class NoopMethodCallHandler implements MethodCallHandler {
-  onMethodCall(call: MethodCall, result: MethodResult): void {
-    hilog.warn(LOG_DOMAIN, LOG_TAG, '%{public}s not supported on OHOS (P3 noop)', call.method);
-    result.success(null);
-  }
-}
-
-export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCallHandler, StreamHandler, AbilityAware {
-  private messenger: BinaryMessenger | null = null;
-  private context: common.Context | null = null;
-  // Texture 路径 (Alpha 合成): mode≠0 时创建 Flutter 纹理, 合成画面经纹理透出下层 Widget
-  private textureRegistry: TextureRegistry | null = null;
-  private alphaTextureEntries: Map<string, SurfaceTextureEntry> = new Map();
-  private alphaTextureIds: Map<string, number> = new Map();
-  private uiContext: common.UIAbilityContext | null = null;
-
-  // 主通道
+/**
+ * 主插件入口 - 注册所有 Channel 和 PlatformView
+ */
+export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCallHandler, AbilityAware {
+  // MethodChannel: 播放器工厂通道
   private factoryChannel: MethodChannel | null = null;
-  private downloadChannel: MethodChannel | null = null;
-  private mediaLoaderChannel: MethodChannel | null = null;
-  private loaderV2Channel: MethodChannel | null = null;
-  private globalSettingChannel: MethodChannel | null = null;
-
-  // 事件通道
-  private playerEventChannel: EventChannel | null = null;
+  
+  // EventChannel: 播放事件流
+  private eventChannel: EventChannel | null = null;
   private eventSink: EventSink | null = null;
-
-  // 多实例管理
-  private players: Map<string, AliPlayerProxy> = new Map();
-  // viewId -> surfaceId (来自 XComponent onLoad)
-  private viewIdToSurfaceId: Map<number, string> = new Map();
-  // viewId -> playerId (来自 setPlayerView, 待 surfaceId 到达后桥接)
-  private viewIdToPlayerId: Map<number, string> = new Map();
+  
+  // UIAbilityContext（用于权限申请、画中画等）
+  private abilityContext: common.UIAbilityContext | null = null;
+  
+  // BinaryMessenger（用于创建子 Channel）
+  private messenger: BinaryMessenger | null = null;
+  
+  // ApplicationContext
+  private applicationContext: common.Context | null = null;
+  
+  // 播放器实例管理器
+  private instanceManager: AliPlayerInstanceManager | null = null;
+  
+  // 子插件
+  private downloaderPlugin: AliDownloaderPlugin | null = null;
+  private mediaLoaderPlugin: AliMediaLoaderPlugin | null = null;
+  private mediaLoaderV2Plugin: AliMediaLoaderV2Plugin | null = null;
+  private globalSettingsPlugin: AliGlobalSettingsPlugin | null = null;
 
   getUniqueClassName(): string {
     return 'FlutterAliplayerPlugin';
   }
 
   /**
-   * 获取引擎纹理的 OHNativeWindow* 指针字符串 (bigint 无损)。
-   * getNativeWindowPtr 未在旧版 SurfaceTextureEntry 接口暴露, 经本地接口中转调用实现类方法。
+   * FlutterPlugin 生命周期 - 插件挂载到引擎
    */
-  private getNativeWindowPtrString(entry: SurfaceTextureEntry): string {
-    const impl = entry as object as NativeWindowPtrProvider;
-    return impl.getNativeWindowPtr().toString();
+  onAttachedToEngine(binding: FlutterPluginBinding): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'onAttachedToEngine');
+    console.info('[FlutterAliplayer] onAttachedToEngine');
+    
+    // native 库由 XComponent(libraryname: 'premierlibrary') 自动加载
+    
+    this.applicationContext = binding.getApplicationContext();
+    this.messenger = binding.getBinaryMessenger();
+    
+    // 初始化播放器实例管理器
+    this.instanceManager = new AliPlayerInstanceManager(this.messenger!, this.applicationContext!);
+    
+    // 注册 PlatformView Factory（Android viewType）
+    binding.getPlatformViewRegistry()
+      .registerViewFactory('flutter_aliplayer_render_view', new AliPlayerViewFactory(this.instanceManager!));
+    
+    // 注册 iOS viewType（与 Android viewType 共用同一个 Factory）
+    binding.getPlatformViewRegistry()
+      .registerViewFactory('plugins.flutter_aliplayer', new AliPlayerViewFactory(this.instanceManager!));
+    
+    // 注册播放器工厂 MethodChannel
+    this.factoryChannel = new MethodChannel(this.messenger!, 'plugins.flutter_aliplayer_factory');
+    this.factoryChannel.setMethodCallHandler(this);
+    
+    // 注册播放事件 EventChannel
+    this.eventChannel = new EventChannel(this.messenger!, 'flutter_aliplayer_event');
+    this.eventChannel.setStreamHandler(this);
+    
+    // 初始化子插件
+    this.downloaderPlugin = new AliDownloaderPlugin(this.messenger!, this.applicationContext!);
+    this.mediaLoaderPlugin = new AliMediaLoaderPlugin(this.messenger!, this.applicationContext!);
+    this.mediaLoaderV2Plugin = new AliMediaLoaderV2Plugin(this.messenger!, this.applicationContext!);
+    this.globalSettingsPlugin = new AliGlobalSettingsPlugin(this.messenger!, this.applicationContext!);
   }
 
   /**
-   * 释放 playerId 关联的 Alpha 合成纹理。
-   * 必须经 textureRegistry.unregisterTexture 注销 — 该引擎版本的
-   * SurfaceTextureRegistryEntry.release() 是 `throw new Error('Method not implemented.')`,
-   * 调用它会抛异常并中断后续清理 (mode 0 切不回直出)。
-   * 纹理自身的 OHNativeWindow* 归引擎所有, unregisterTexture 即可, 无需手动释放。
+   * FlutterPlugin 生命周期 - 插件从引擎卸载
    */
-  private releaseAlphaTexture(playerId: string): void {
-    const textureId = this.alphaTextureIds.get(playerId);
-    this.alphaTextureEntries.delete(playerId);
-    this.alphaTextureIds.delete(playerId);
-    if (textureId === undefined || this.textureRegistry === null) {
-      return;
+  onDetachedFromEngine(binding: FlutterPluginBinding): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'onDetachedFromEngine');
+    
+    // 清理播放器实例
+    if (this.instanceManager !== null) {
+      this.instanceManager.releaseAll();
+      this.instanceManager = null;
     }
-    try {
-      this.textureRegistry.unregisterTexture(textureId);
-      hilog.info(LOG_DOMAIN, LOG_TAG, 'alpha texture released: textureId=%{public}d', textureId);
-    } catch (e) {
-      hilog.warn(LOG_DOMAIN, LOG_TAG, 'unregister alpha texture %{public}d failed: %{public}s',
-        textureId, (e as Error).message);
+    
+    // 清理 Channel
+    if (this.factoryChannel !== null) {
+      this.factoryChannel.setMethodCallHandler(null);
+      this.factoryChannel = null;
     }
-  }
-
-  /** 释放所有 Alpha 合成纹理 (engine detach / 批量清理) */
-  private releaseAllAlphaTextures(): void {
-    const playerIds: string[] = Array.from(this.alphaTextureIds.keys());
-    for (const pid of playerIds) {
-      this.releaseAlphaTexture(pid);
+    
+    if (this.eventChannel !== null) {
+      this.eventChannel.setStreamHandler(null);
+      this.eventChannel = null;
+      this.eventSink = null;
     }
-  }
-
-  // ============== FlutterPlugin 生命周期 ==============
-
-  onAttachedToEngine(binding: FlutterPluginBinding): void {
-    this.messenger = binding.getBinaryMessenger();
-    this.context = binding.getApplicationContext();
-    // Texture 路径 (Alpha 合成)
-    this.textureRegistry = binding.getTextureRegistry();
-
-    // 注册 PlatformView Factory
-    const surfaceCallback: SurfaceIdCallback = (viewId: number, surfaceId: string): void => {
-      this.onSurfaceReady(viewId, surfaceId);
-    };
-    binding.getPlatformViewRegistry().registerViewFactory(VIEW_TYPE, new AliPlayerViewFactory(surfaceCallback));
-
-    // 主 MethodChannel
-    this.factoryChannel = new MethodChannel(this.messenger, CHANNEL_FACTORY);
-    this.factoryChannel.setMethodCallHandler(this);
-
-    // 辅助 MethodChannel: 下载/预加载使用独立 no-op handler (方法名与播放器重叠, 不能复用主 handler)
-    const noopHandler = new NoopMethodCallHandler();
-    this.downloadChannel = new MethodChannel(this.messenger, CHANNEL_DOWNLOAD);
-    this.downloadChannel.setMethodCallHandler(noopHandler);
-    this.mediaLoaderChannel = new MethodChannel(this.messenger, CHANNEL_MEDIA_LOADER);
-    this.mediaLoaderChannel.setMethodCallHandler(noopHandler);
-    this.loaderV2Channel = new MethodChannel(this.messenger, CHANNEL_LOADER_V2);
-    this.loaderV2Channel.setMethodCallHandler(noopHandler);
-    // 全局设置通道方法名不与播放器重叠, 可复用主 handler (均为 no-op)
-    this.globalSettingChannel = new MethodChannel(this.messenger, CHANNEL_GLOBAL_SETTING);
-    this.globalSettingChannel.setMethodCallHandler(this);
-
-    // 主 EventChannel (共享 EventSink)
-    this.playerEventChannel = new EventChannel(this.messenger, EVENT_PLAYER);
-    this.playerEventChannel.setStreamHandler(this);
-
-    // 辅助 EventChannel (空 StreamHandler)
-    new EventChannel(this.messenger, EVENT_DOWNLOAD).setStreamHandler(new NoopStreamHandler());
-    new EventChannel(this.messenger, EVENT_MEDIA_LOADER).setStreamHandler(new NoopStreamHandler());
-    new EventChannel(this.messenger, EVENT_LOADER_V2).setStreamHandler(new NoopStreamHandler());
-
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'onAttachedToEngine ok');
-  }
-
-  onDetachedFromEngine(_binding: FlutterPluginBinding): void {
-    this.factoryChannel?.setMethodCallHandler(null);
-    this.factoryChannel = null;
-    this.downloadChannel?.setMethodCallHandler(null);
-    this.downloadChannel = null;
-    this.mediaLoaderChannel?.setMethodCallHandler(null);
-    this.mediaLoaderChannel = null;
-    this.loaderV2Channel?.setMethodCallHandler(null);
-    this.loaderV2Channel = null;
-    this.globalSettingChannel?.setMethodCallHandler(null);
-    this.globalSettingChannel = null;    this.playerEventChannel?.setStreamHandler(null);
-    this.playerEventChannel = null;
-    this.eventSink = null;
-
-    // 释放所有播放器
-    this.players.forEach((proxy: AliPlayerProxy, _key: string) => {
-      proxy.release();
-    });
-    this.players.clear();
-    // 释放所有 Alpha 合成纹理 (先于 textureRegistry 置空)
-    this.releaseAllAlphaTextures();
-    this.textureRegistry = null;
-    this.viewIdToSurfaceId.clear();
-    this.viewIdToPlayerId.clear();
+    
+    // 清理子插件
+    if (this.downloaderPlugin !== null) {
+      this.downloaderPlugin.release();
+      this.downloaderPlugin = null;
+    }
+    
+    if (this.mediaLoaderPlugin !== null) {
+      this.mediaLoaderPlugin.release();
+      this.mediaLoaderPlugin = null;
+    }
+    
+    if (this.mediaLoaderV2Plugin !== null) {
+      this.mediaLoaderV2Plugin.release();
+      this.mediaLoaderV2Plugin = null;
+    }
+    
+    if (this.globalSettingsPlugin !== null) {
+      this.globalSettingsPlugin.release();
+      this.globalSettingsPlugin = null;
+    }
+    
     this.messenger = null;
-    this.context = null;
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'onDetachedFromEngine ok');
+    this.applicationContext = null;
   }
 
-  // ============== AbilityAware 生命周期 ==============
-
+  /**
+   * AbilityAware 生命周期 - 获取 UIAbilityContext
+   */
   onAttachedToAbility(binding: AbilityPluginBinding): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'onAttachedToAbility');
     const ability = binding.getAbility();
     if (ability !== null && ability !== undefined) {
-      this.uiContext = ability.context as common.UIAbilityContext;
+      this.abilityContext = ability.context as common.UIAbilityContext;
     }
   }
 
+  /**
+   * AbilityAware 生命周期 - 释放 UIAbilityContext
+   */
   onDetachedFromAbility(): void {
-    this.uiContext = null;
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'onDetachedFromAbility');
+    this.abilityContext = null;
   }
 
-  // ============== StreamHandler (主 EventChannel) ==============
-
-  onListen(_args: Object, events: EventSink): void {
+  /**
+   * EventChannel StreamHandler - 开始监听事件流
+   */
+  onListen(args: Object, events: EventSink): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'EventChannel onListen');
     this.eventSink = events;
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'EventChannel onListen');
+    if (this.instanceManager !== null) {
+      this.instanceManager.setEventSink(events);
+    }
   }
 
-  onCancel(_args: Object): void {
+  /**
+   * EventChannel StreamHandler - 取消监听事件流
+   */
+  onCancel(args: Object): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'EventChannel onCancel');
     this.eventSink = null;
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'EventChannel onCancel');
-  }
-
-  // ============== surface 桥接 ==============
-
-  /** XComponent onLoad 回调: surfaceId 已就绪 */
-  private onSurfaceReady(viewId: number, surfaceId: string): void {
-    this.viewIdToSurfaceId.set(viewId, surfaceId);
-    // 检查是否有 pending setPlayerView
-    const playerId = this.viewIdToPlayerId.get(viewId);
-    if (playerId !== undefined) {
-      const proxy = this.players.get(playerId);
-      if (proxy !== undefined) {
-        proxy.setSurfaceId(surfaceId);
-      }
+    if (this.instanceManager !== null) {
+      this.instanceManager.setEventSink(null);
     }
   }
 
-  /** setPlayerView 调用: 绑定 viewId 到 playerId */
-  private handleSetPlayerView(viewId: number, playerId: string): void {
-    this.viewIdToPlayerId.set(viewId, playerId);
-    const surfaceId = this.viewIdToSurfaceId.get(viewId);
-    if (surfaceId !== undefined) {
-      const proxy = this.players.get(playerId);
-      if (proxy !== undefined) {
-        proxy.setSurfaceId(surfaceId);
-      }
-    }
-  }
-
-  // ============== 事件下发 ==============
-
-  /** 发送事件到共享 EventSink (供 AliPlayerProxy 回调) */
-  sendEvent(data: Map<string, Object>): void {
-    if (this.eventSink !== null) {
-      this.eventSink.success(data);
-    }
-  }
-
-  // ============== MethodCallHandler ==============
-
+  /**
+   * MethodChannel 处理器 - 处理播放器工厂方法
+   */
   onMethodCall(call: MethodCall, result: MethodResult): void {
-    // 无参方法快速处理
-    if (call.method === 'getSDKVersion') {
-      result.success('flutter_aliplayer-ohos-1.0.0');
-      return;
-    }
-
-    // 提取参数 (wrapWithPlayerId 模式: {arg, playerId})
+    console.info('[FlutterAliplayer] onMethodCall method=' + call.method);
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'onMethodCall method=%{public}s', call.method);
+    
     const args = call.args as Map<string, Object> | null;
-    let playerId: string = '';
-    let arg: Object | null = null;
-    if (args !== null && args !== undefined) {
-      const pid = args.get('playerId');
-      if (pid !== undefined && pid !== null) {
-        playerId = (pid as Object) as string;
-      }
-      const a = args.get('arg');
-      if (a !== undefined) {
-        arg = a as Object;
-      }
-    }
-
+    
     switch (call.method) {
-      // ====== 播放器创建/生命周期 ======
       case 'createAliPlayer':
-        this.handleCreatePlayer(playerId, arg, result);
+        this.createAliPlayer(args, result);
         break;
       case 'createAliListPlayer':
-        this.handleCreatePlayer(playerId, arg, result);
+        this.createAliListPlayer(args, result);
         break;
       case 'createAliLiveShiftPlayer':
-        this.handleCreatePlayer(playerId, arg, result);
+        this.createAliLiveShiftPlayer(args, result);
         break;
       case 'destroy':
-      case 'releaseAsync':
-        this.handleRelease(playerId, result);
+        this.destroyPlayer(args, result);
         break;
-
-      // ====== 回调注册 (返回 success, 事件通过 BasicMessageChannel/EventChannel 下发) ======
-      case 'setOnPrepare':
-      case 'setOnRenderingStart':
-      case 'setOnStateChanged':
-      case 'setOnStreamSwitchedListener':
-        result.success(null);
-        break;
-
-      // ====== 数据源 ======
-      case 'setUrl':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setUrl(arg as string);
-          result.success(null);
-        });
-        break;
-      case 'switchStream':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setUrl(arg as string);
-          result.success(null);
-        });
-        break;
-      case 'setVidSts':
-      case 'setVidAuth':
-      case 'setVidMps':
-      case 'setLiveSts':
-      case 'updateLiveStsInfo':
-        // Aliyun VOD 生态数据源需应用层解析为 URL, 鸿蒙侧 AVPlayer 不支持 vid 直接播放
-        hilog.warn(LOG_DOMAIN, LOG_TAG, '%{public}s not supported on OHOS (Aliyun VOD private)', call.method);
-        result.success(null);
-        break;
-
-      // ====== 播控 ======
+        
       case 'prepare':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.prepare();
-          result.success(null);
-        });
+        this.preparePlayer(args, result);
         break;
       case 'play':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.play();
-          result.success(null);
-        });
+        this.playPlayer(args, result);
         break;
       case 'pause':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.pause();
-          result.success(null);
-        });
+        this.pausePlayer(args, result);
         break;
       case 'stop':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.stop();
-          result.success(null);
-        });
-        break;
-      case 'seekTo':
-        this.handleSeekTo(playerId, arg, result);
-        break;
-      case 'setStartTime':
-        // 起播位置, 鸿蒙侧近似为 seek (在 prepare 后执行)
-        this.handleSetStartTime(playerId, arg, result);
-        break;
-      case 'clearScreen':
-      case 'clearScreenSync':
-        result.success(null);
-        break;
-      case 'snapshot':
-        hilog.warn(LOG_DOMAIN, LOG_TAG, 'snapshot not supported on OHOS (use AVImageGenerator separately)');
-        result.success(null);
+        this.stopPlayer(args, result);
         break;
       case 'reload':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.reload();
-          result.success(null);
-        });
+        this.reloadPlayer(args, result);
         break;
-
-      // ====== 音量/倍速/静音/循环/自动播放 ======
-      case 'setVolume':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setVolume((arg as Object) as number);
-          result.success(null);
-        });
-        break;
-      case 'getVolume':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getVolume());
-        });
+      case 'seekTo':
+        this.seekToPlayer(args, result);
         break;
       case 'setSpeed':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setSpeed((arg as Object) as number);
-          result.success(null);
-        });
-        break;
-      case 'getSpeed':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getSpeed());
-        });
-        break;
-      case 'setMuted':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setMuted((arg as Object) as boolean);
-          result.success(null);
-        });
-        break;
-      case 'isMuted':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.isMuted());
-        });
+        this.setSpeed(args, result);
         break;
       case 'setLoop':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setLoop((arg as Object) as boolean);
-          result.success(null);
-        });
-        break;
-      case 'isLoop':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.isLoop());
-        });
+        this.setLoop(args, result);
         break;
       case 'setAutoPlay':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setAutoPlay((arg as Object) as boolean);
-          result.success(null);
-        });
+        this.setAutoPlay(args, result);
         break;
-      case 'isAutoPlay':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.isAutoPlay());
-        });
+        
+      // === 播放源设置 ===
+      case 'setUrl':
+        this.setUrl(args, result);
         break;
-
-      // ====== 渲染模式 ======
-      case 'setScalingMode':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          proxy.setScalingMode((arg as Object) as number);
-          result.success(null);
-        });
+      case 'setVidSts':
+        this.setVidSts(args, result);
         break;
-      case 'getScalingMode':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getScalingMode());
-        });
+      case 'setVidAuth':
+        this.setVidAuth(args, result);
         break;
-      case 'setPlayerView':
-        this.handleSetPlayerView((arg as Object) as number, playerId);
-        result.success(null);
+      case 'setVidMps':
+        this.setVidMps(args, result);
         break;
-      case 'setRotateMode':
-      case 'getRotateMode':
-      case 'setMirrorMode':
-      case 'getMirrorMode':
-      case 'setVideoBackgroundColor':
-      case 'setOutputAudioChannel':
-        // 旋转/镜像/背景色: AVPlayer 不支持, ArkUI transform 层可后续扩展
-        result.success(null);
+      case 'setLiveSts':
+        this.setLiveSts(args, result);
         break;
-      case 'setAlphaRenderMode':
-        // Alpha 渲染 (issue #3 问题一, Texture 路径):
-        // mode=1-4 时创建 Flutter 纹理, 纹理 surface 作为合成目标,
-        // 合成画面经纹理参与 Flutter 合成 — 透明区可透出下层 Widget。
-        // 成功返回 textureId (Map: {textureId}), Dart 侧用 Texture widget 显示。
-        // 失败返回 error 让 Dart 侧降级。
-        // 注: 不用 notImplemented — 该响应在此引擎版本下会使 Dart 侧 await 挂起。
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          const mode = (arg as Object) as number;
-          if (mode === 0) {
-            // 切回直出: 先释放合成渲染器与纹理, 再把 AVPlayer 指回 XComponent surface
-            if (proxy.setAlphaRenderMode(0)) {
-              this.releaseAlphaTexture(playerId);
-              result.success(null);
-            } else {
-              result.error('ALPHA_ERROR', 'setAlphaRenderMode(0) failed', null);
-            }
-            return;
-          }
-          if (this.textureRegistry === null) {
-            result.error('ALPHA_ERROR', 'TextureRegistry unavailable', null);
-            return;
-          }
-          try {
-            let entry = this.alphaTextureEntries.get(playerId);
-            let textureId = this.alphaTextureIds.get(playerId);
-            if (entry === undefined || textureId === undefined) {
-              textureId = this.textureRegistry.getTextureId();
-              entry = this.textureRegistry.registerTexture(textureId);
-              this.alphaTextureEntries.set(playerId, entry);
-              this.alphaTextureIds.set(playerId, textureId);
-              hilog.info(LOG_DOMAIN, LOG_TAG, 'alpha texture created: textureId=%{public}d', textureId);
-            }
-            const textureSurfaceId = entry.getSurfaceId().toString();
-            // Texture 路径: 传引擎的 OHNativeWindow* 指针 (bigint 无损转字符串,
-            // 避免 number 精度截断导致 EGL_BAD_NATIVE_WINDOW)。
-            // 注: getNativeWindowPtr 未在旧版 SurfaceTextureEntry 接口暴露, 经反射式调用获取
-            const nativeWindowPtr = this.getNativeWindowPtrString(entry);
-            if (proxy.setAlphaRenderMode(mode, textureSurfaceId, nativeWindowPtr)) {
-              const resultMap = new Map<string, Object>();
-              resultMap.set('textureId', textureId);
-              result.success(resultMap);
-            } else {
-              result.error('UNSUPPORTED',
-                `AlphaRenderMode ${mode} is not supported on OHOS now`, null);
-            }
-          } catch (e) {
-            result.error('ALPHA_ERROR', (e as Error).message, null);
-          }
-        },
-        // player 不存在时报错, 避免 withProxy 静默 success(null) 掩盖问题
-        (r: MethodResult): void => {
-          r.error('PLAYER_NOT_FOUND', `player not found: ${playerId}`, null);
-        });
+      case 'setDataSource':
+        this.setDataSource(args, result);
         break;
-      case 'getAlPhaRenderMode':
-      case 'getAlphaRenderMode':
-        // 返回当前生效的 Alpha 模式 (默认 0)。
-        // 注: Dart 侧历史拼写为 getAlPhaRenderMode, 此处兼容两种拼写。
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getAlphaRenderMode());
-        });
+        
+      // === 音量控制 ===
+      case 'setVolume':
+        this.setVolume(args, result);
         break;
-
-      // ====== 查询 ======
+      case 'getVolume':
+        this.getVolume(args, result);
+        break;
+      case 'setMuted':
+        this.setMuted(args, result);
+        break;
+      case 'isMuted':
+        this.isMuted(args, result);
+        break;
+        
+      // === 视频信息获取 ===
       case 'getVideoWidth':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getVideoWidth());
-        });
+        this.getVideoWidth(args, result);
         break;
       case 'getVideoHeight':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getVideoHeight());
-        });
-        break;
-      case 'getVideoRotation':
-        result.success(0);
+        this.getVideoHeight(args, result);
         break;
       case 'getDuration':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getDuration());
-        });
+        this.getDuration(args, result);
         break;
       case 'getCurrentPosition':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getCurrentPosition());
-        });
+        this.getCurrentPosition(args, result);
         break;
-      case 'getPlayedDuration':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getCurrentPosition());
-        });
-        break;
-      case 'getCurrentUtcTime':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getCurrentPosition());
-        });
-        break;
-      case 'getBufferedPosition':
-        this.withProxy(playerId, result, (proxy: AliPlayerProxy): void => {
-          result.success(proxy.getDuration());
-        });
-        break;
-      case 'getCurrentDownloadSpeed':
-        result.success(0);
-        break;
-      case 'getLocalCacheLoadedSize':
-        result.success(0);
-        break;
-
-      // ====== 配置 ======
-      case 'setConfig':
-      case 'setPlayConfig':
-      case 'setOption':
-      case 'setMaxAccurateSeekDelta':
-      case 'setFastStart':
-      case 'enableHardwareDecoder':
-      case 'setEnableHardwareDecoder':
-      case 'enableDowngrade':
-      case 'setFilterConfig':
-      case 'updateFilterConfig':
-      case 'setFilterInvalid':
-      case 'setRenderFrameCallbackConfig':
-        // AVPConfig 字段大多无鸿蒙对等, 静默忽略
-        result.success(null);
-        break;
-      case 'getConfig':
-      case 'getPlayConfig':
-        result.success(new Map<string, Object>());
-        break;
-
-      // ====== 轨道管理 (P1) ======
       case 'getMediaInfo':
-        this.handleGetMediaInfo(playerId, result);
+        this.getMediaInfo(args, result);
         break;
-      case 'getTrackDescription':
-      case 'getCurrentTrack':
-        this.handleGetTrackDescription(playerId, result);
+        
+      // === 视频渲染 ===
+      case 'setPlayerView':
+        this.setPlayerView(args, result);
         break;
+      case 'setScalingMode':
+        this.setScalingMode(args, result);
+        break;
+      case 'setRotateMode':
+        this.setRotateMode(args, result);
+        break;
+      case 'setMirrorMode':
+        this.setMirrorMode(args, result);
+        break;
+      case 'getAlPhaRenderMode':
+        this.getAlphaRenderMode(args, result);
+        break;
+      case 'setAlphaRenderMode':
+        this.setAlphaRenderMode(args, result);
+        break;
+      case 'setVideoBackgroundColor':
+        this.setVideoBackgroundColor(args, result);
+        break;
+
+      // === 清晰度切换 ===
       case 'selectTrack':
-        this.handleSelectTrack(playerId, arg, result);
+        this.selectTrack(args, result);
         break;
-      case 'selectTrackByTrackType':
+      case 'switchStream':
+        this.switchStream(args, result);
+        break;
       case 'setDefaultBandWidth':
+        this.setDefaultBandWidth(args, result);
+        break;
       case 'setDefaultResolution':
-      case 'setDefaultAudioLanguage':
-        result.success(null);
+        this.setDefaultResolution(args, result);
         break;
-
-      // ====== 缓存/文件 ======
-      case 'getCacheFilePath':
-      case 'getCacheFilePathWithVid':
-        result.success(null);
+        
+      // === 全局设置 ===
+      case 'getSDKVersion':
+        result.success('7.14.0');
         break;
-
-      // ====== 字幕 ======
-      case 'addExtSubtitle':
-      case 'selectExtSubtitle':
-        result.success(null);
+      case 'setLogLevel':
+        this.setLogLevel(call.args, result);
         break;
-
-      // ====== 全局设置 / 下载 / 预加载 (P3 安全空实现) ======
-      case 'initService':
-      case 'initLicenseServiceForIOS':
+      case 'enableConsoleLog':
+        this.enableConsoleLog(call.args, result);
+        break;
+      case 'netWorkReConnect':
+        this.netWorkReConnect(result);
+        break;
+        
+      // === Android 专属功能（OHOS 不支持） ===
       case 'showFloatViewForAndroid':
       case 'hideFloatViewForAndroid':
       case 'checkFloatViewPermission':
       case 'requestFloatViewPermission':
       case 'setFloatViewIcon':
       case 'setFloatViewUI':
+        hilog.warn(LOG_DOMAIN, LOG_TAG, 'Android-only method: %{public}s', call.method);
+        result.success(false);
+        break;
+        
+      // === RTS/ARTC SDK 加载 ===
       case 'loadRtsLibrary':
-      case 'setGlobalEnvironment':
-      case 'setOption_global':
-      case 'disableCrashUpload':
-      case 'enableEnhancedHttpDns':
-      case 'setCacheUrlHashCallback':
-      case 'setNetworkCallback':
-      case 'setAdaptiveDecoderGetBackupURLCallback':
-      case 'setSystemBrightness':
-      case 'getSystemBrightness':
-      case 'enableConsoleLog':
-      case 'setLogLevel':
-      case 'setLogOption':
-      case 'getLogLevel':
-      case 'setUseHttp2':
-      case 'enableHttpDns':
-      case 'setDNSResolve':
-      case 'setIpResolveType':
-      case 'setFairPlayCertIDForIOS':
-      case 'enableHWAduioTempo':
-      case 'forceAudioRendingFormat':
-      case 'netWorkReConnect':
-      case 'enableLocalCache':
-      case 'setCacheFileClearConfig':
-      case 'clearCaches':
-      case 'enableNetworkBalance':
-      case 'createDeviceInfo':
-      case 'addBlackDevice':
-      case 'createVidPlayerConfigGenerator':
-      case 'setPreviewTime':
-      case 'setHlsUriToken':
-      case 'addVidPlayerConfigBy':
-      case 'addVidPlayerConfigByStringValue':
-      case 'addVidPlayerConfigByIntValue':
-      case 'setEncryptType':
-      case 'generatePlayerConfig':
-      case 'setAudioSessionTypeForIOS':
-      case 'setLogInfoCallBack':
-      case 'setLogInfoBlock':
-      case 'isFeatureSupport':
-      case 'getDeviceUUID':
-      case 'setPictureInPictureShowMode':
-      case 'setPictureInPictureEnableForIOS':
-      case 'setPreferPlayerName':
-      case 'getPlayerName':
-      case 'setPlayerScene':
-      case 'setUserData':
-      case 'getUserData':
-      case 'setTraceID':
-      case 'sendCustomEvent':
-      case 'setStreamDelayTime':
-      case 'getOption':
-      case 'getPropertyString':
-      case 'setEventReportParamsDelegate':
-      case 'setPrivateService':
-      case 'setDrmCallback':
-      case 'setOnPreRenderFrameCallback':
-      case 'setOnRenderFrameCallback':
-      case 'setConvertURLCallback':
-      case 'setOnURLSourceExpiredListener':
-      case 'setOnVidAuthExpiredListener':
-      case 'getCacheFilePathWithVidAtPreviewTime':
-      case 'getSubMediaInfo':
+        this.loadRtsLibrary(args, result);
+        break;
+        
+      // === 其他功能 ===
+      case 'snapshot':
+        this.snapshot(args, result);
+        break;
+      case 'addExtSubtitle':
+        this.addExtSubtitle(args, result);
+        break;
+      case 'selectExtSubtitle':
+        this.selectExtSubtitle(args, result);
+        break;
+      case 'setConfig':
+        this.setPlayerConfig(args, result);
+        break;
+      case 'setPlayConfig':
+        this.setPlayerConfig(args, result);
+        break;
+      case 'getConfig':
+        this.getPlayerConfig(args, result);
+        break;
+        
+      // === 缩略图功能 ===
       case 'createThumbnailHelper':
+        this.createThumbnailHelper(args, result);
+        break;
       case 'requestBitmapAtPosition':
-        // 下载/预加载/全局设置/DRM/FairPlay/HttpDNS/双向回调/缩略图等为 Aliyun 私有能力或 iOS 专有, 鸿蒙侧安全空实现
+        this.requestBitmapAtPosition(args, result);
+        break;
+        
+      // === 鉴权过期回调 ===
+      case 'setOnURLSourceExpiredListener':
+        this.setOnURLSourceExpiredListener(args, result);
+        break;
+      case 'setOnVidAuthExpiredListener':
+        this.setOnVidAuthExpiredListener(args, result);
+        break;
+      case 'setOnPrepare':
+      case 'setOnRenderingStart':
+      case 'setOnStateChanged':
+      case 'setOnStreamSwitchedListener':
         result.success(null);
         break;
-
-      // ====== 下载器方法 ======
-      case 'prepare_download':
-      case 'start_download':
-      case 'selectItem_download':
-      case 'setSaveDir_download':
-      case 'getFullSaveDir_download':
-      case 'stop_download':
-      case 'delete_download':
-      case 'getFilePath_download':
-      case 'release_download':
-      case 'updateSource_download':
-      case 'setDownloaderConfig_download':
-        hilog.warn(LOG_DOMAIN, LOG_TAG, 'download not supported on OHOS: %{public}s', call.method);
-        result.success(null);
+        
+      // === 列表播放器方法 ===
+      case 'addUrlSource':
+        this.addUrlSource(args, result);
         break;
-
-      // ====== 预加载方法 ======
-      case 'load':
-      case 'loadWithBandWidth':
-      case 'resume':
-      case 'pause':
-      case 'cancel':
-      case 'addTask':
-      case 'addUrlTask':
-      case 'addVidAuthTask':
-      case 'addVidStsTask':
-      case 'resumeTask':
-      case 'pauseTask':
-      case 'cancelTask':
-      case 'getPreloadConfig':
-      case 'setPreloadConfig':
-        hilog.warn(LOG_DOMAIN, LOG_TAG, 'media preload not supported on OHOS: %{public}s', call.method);
-        result.success(null);
+      case 'moveTo':
+        this.moveTo(args, result);
         break;
-
+      case 'moveToNext':
+        this.moveToNext(args, result);
+        break;
+      case 'moveToPre':
+        this.moveToPre(args, result);
+        break;
+      case 'getCurrentUid':
+        this.getCurrentUid(args, result);
+        break;
+      case 'clear':
+        this.clearPlaylist(args, result);
+        break;
+      case 'removeSource':
+        this.removeSource(args, result);
+        break;
+        
+      // === 直播时移播放器方法 ===
+      case 'setLiveShiftDataSource':
+        this.setLiveShiftDataSource(args, result);
+        break;
+      case 'seekToLiveTime':
+        this.seekToLiveTime(args, result);
+        break;
+      case 'getCurrentLiveTime':
+        this.getCurrentLiveTime(args, result);
+        break;
+      case 'getCurrentTime':
+        this.getCurrentTime(args, result);
+        break;
+        
+      // === 未实现功能 ===
       default:
-        hilog.warn(LOG_DOMAIN, LOG_TAG, 'notImplemented: %{public}s', call.method);
+        hilog.warn(LOG_DOMAIN, LOG_TAG, 'Method not implemented: %{public}s', call.method);
         result.notImplemented();
         break;
     }
   }
 
-  // ============== 方法处理辅助 ==============
+  // === 播放器创建方法 ===
 
-  /** 安全获取 proxy 并执行操作 */
-  private withProxy(
-    playerId: string,
-    result: MethodResult,
-    action: (proxy: AliPlayerProxy) => void,
-    onMissing?: (result: MethodResult) => void,
-  ): void {
-    const proxy = this.players.get(playerId);
-    if (proxy === undefined) {
-      hilog.warn(LOG_DOMAIN, LOG_TAG, 'player not found: %{public}s', playerId);
-      if (onMissing !== undefined) {
-        onMissing(result);
-        return;
+  private createAliPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    const playerType = args?.get('arg') as number ?? 0;
+    console.info('[FlutterAliplayer] createAliPlayer playerId=' + playerId + ', type=' + playerType);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'createAliPlayer playerId=%{public}s, type=%{public}d', playerId, playerType);
+    
+    if (this.instanceManager === null) {
+      console.error('[FlutterAliplayer] Instance manager not initialized');
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    try {
+      let typeStr: string = 'single';
+      if (playerType === 1) {
+        typeStr = 'list';
+      } else if (playerType === 2) {
+        typeStr = 'liveShift';
       }
-      result.success(null);
-      return;
-    }
-    action(proxy);
-  }
-
-  /** 创建播放器 */
-  private handleCreatePlayer(playerId: string, _arg: Object | null, result: MethodResult): void {
-    if (playerId === null || playerId === undefined || playerId.length === 0) {
-      result.error('INVALID_PLAYER_ID', 'playerId is empty', null);
-      return;
-    }
-    if (this.messenger === null) {
-      result.error('NO_MESSENGER', 'BinaryMessenger not available', null);
-      return;
-    }
-    // 已存在则先释放
-    const existing = this.players.get(playerId);
-    if (existing !== undefined) {
-      existing.release();
-      this.players.delete(playerId);
-    }
-    // 复用同一 playerId 时清理旧纹理, 避免泄漏
-    this.releaseAlphaTexture(playerId);
-    const proxy = new AliPlayerProxy(playerId, this.messenger, (data: Map<string, Object>): void => {
-      this.sendEvent(data);
-    });
-    this.players.set(playerId, proxy);
-    proxy.create().then(() => {
-      result.success(null);
-    }).catch((e: Error) => {
-      result.error('CREATE_FAILED', e.message, null);
-    });
-  }
-
-  /** 释放播放器 */
-  private handleRelease(playerId: string, result: MethodResult): void {
-    const proxy = this.players.get(playerId);
-    // 纹理清理与播放器是否存在无关, 避免残留纹理
-    this.releaseAlphaTexture(playerId);
-    if (proxy !== undefined) {
-      proxy.release().then(() => {
-        this.players.delete(playerId);
-        result.success(null);
-      }).catch(() => {
-        this.players.delete(playerId);
-        result.success(null);
-      });
-    } else {
-      result.success(null);
+      this.instanceManager.createPlayer(playerId, typeStr);
+      const response = new Map<string, Object>();
+      response.set('playerId', playerId);
+      result.success(response);
+      console.info('[FlutterAliplayer] createAliPlayer success, type=' + typeStr);
+    } catch (err) {
+      const error = err as Error;
+      console.error('[FlutterAliplayer] createAliPlayer failed: ' + error.message);
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'createAliPlayer failed: %{public}s', error.message);
+      result.error('CREATE_FAILED', error.message, null);
     }
   }
 
-  /** seekTo: arg 为 Map {position, seekMode} */
-  private handleSeekTo(playerId: string, arg: Object | null, result: MethodResult): void {
-    const proxy = this.players.get(playerId);
-    if (proxy === undefined) {
-      result.success(null);
+  private createAliListPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'createAliListPlayer playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
       return;
     }
-    let position: number = 0;
-    let seekMode: number = 1;
-    if (arg !== null && arg !== undefined) {
-      const map = arg as Map<string, Object>;
-      const pos = map.get('position');
-      if (pos !== undefined && pos !== null) {
-        position = (pos as Object) as number;
-      }
-      const mode = map.get('seekMode');
-      if (mode !== undefined && mode !== null) {
-        seekMode = (mode as Object) as number;
-      }
+    
+    try {
+      this.instanceManager.createPlayer(playerId, 'list');
+      const response = new Map<string, Object>();
+      response.set('playerId', playerId);
+      result.success(response);
+    } catch (err) {
+      const error = err as Error;
+      result.error('CREATE_FAILED', error.message, null);
     }
-    proxy.seekTo(position, seekMode);
+  }
+
+  private createAliLiveShiftPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'createAliLiveShiftPlayer playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    try {
+      this.instanceManager.createPlayer(playerId, 'liveShift');
+      const response = new Map<string, Object>();
+      response.set('playerId', playerId);
+      result.success(response);
+    } catch (err) {
+      const error = err as Error;
+      result.error('CREATE_FAILED', error.message, null);
+    }
+  }
+
+  private destroyPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'destroyPlayer playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    try {
+      this.instanceManager.destroyPlayer(playerId);
+      result.success(null);
+    } catch (err) {
+      const error = err as Error;
+      result.error('DESTROY_FAILED', error.message, null);
+    }
+  }
+
+  // === 播放控制方法 ===
+
+  private preparePlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'prepare playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.prepare();
     result.success(null);
   }
 
-  /** setStartTime: arg 为 Map {time, seekMode} */
-  private handleSetStartTime(playerId: string, arg: Object | null, result: MethodResult): void {
-    const proxy = this.players.get(playerId);
-    if (proxy === undefined) {
-      result.success(null);
+  private playPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'play playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
       return;
     }
-    let time: number = 0;
-    let seekMode: number = 1;
-    if (arg !== null && arg !== undefined) {
-      const map = arg as Map<string, Object>;
-      const t = map.get('time');
-      if (t !== undefined && t !== null) {
-        time = (t as Object) as number;
-      }
-      const mode = map.get('seekMode');
-      if (mode !== undefined && mode !== null) {
-        seekMode = (mode as Object) as number;
-      }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
     }
-    // 起播位置: 在 prepare 后 seek
-    proxy.seekTo(time, seekMode);
+    
+    player.play();
     result.success(null);
   }
 
-  /** getMediaInfo: 返回简化媒体信息 */
-  private handleGetMediaInfo(playerId: string, result: MethodResult): void {
-    const proxy = this.players.get(playerId);
-    if (proxy === undefined) {
-      result.success(null);
+  private pausePlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'pause playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
       return;
     }
-    proxy.getTrackDescription().then((tracks: Array<Object>) => {
-      const info = new Map<string, Object>();
-      info.set('duration', proxy.getDuration());
-      info.set('tracks', tracks);
-      info.set('title', '');
-      info.set('coverURL', '');
-      info.set('status', '');
-      info.set('mediaType', '');
-      info.set('transcodeMode', '');
-      result.success(info);
-    }).catch(() => {
-      result.success(null);
-    });
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.pause();
+    result.success(null);
   }
 
-  /** getTrackDescription */
-  private handleGetTrackDescription(playerId: string, result: MethodResult): void {
-    const proxy = this.players.get(playerId);
-    if (proxy === undefined) {
-      result.success(new Array<Object>());
+  private stopPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'stop playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
       return;
     }
-    proxy.getTrackDescription().then((tracks: Array<Object>) => {
-      result.success(tracks);
-    }).catch(() => {
-      result.success(new Array<Object>());
-    });
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.stop();
+    result.success(null);
   }
 
-  /** selectTrack */
-  private handleSelectTrack(playerId: string, arg: Object | null, result: MethodResult): void {
-    const proxy = this.players.get(playerId);
-    if (proxy === undefined) {
-      result.success(null);
+  private reloadPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
       return;
     }
-    let trackIndex: number = -1;
-    if (arg !== null && arg !== undefined) {
-      const map = arg as Map<string, Object>;
-      // Dart 侧 selectTrack 传 {'trackIdx': trackIdx, 'accurate': accurate}
-      const idx = map.get('trackIdx');
-      if (idx !== undefined && idx !== null) {
-        trackIndex = (idx as Object) as number;
-      } else {
-        // 兼容直接传 int 的情况
-        trackIndex = (arg as Object) as number;
-      }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
     }
-    proxy.selectTrack(trackIndex).then(() => {
-      result.success(null);
-    }).catch(() => {
-      result.success(null);
-    });
+
+    player.reload();
+    result.success(null);
+  }
+
+  private seekToPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const position = arg !== null && arg !== undefined ? (arg.get('position') as Object) as number : 0;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'seekTo playerId=%{public}s position=%{public}d', playerId, position);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.seekTo(position);
+    result.success(null);
+  }
+
+  private setSpeed(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const speed = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as number) : 1.0;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setSpeed playerId=%{public}s speed=%{public}s', playerId, String(speed));
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setSpeed(speed);
+    result.success(null);
+  }
+
+  private setLoop(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const loop = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as boolean) : false;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setLoop(loop);
+    result.success(null);
+  }
+
+  private setAutoPlay(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const autoPlay = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as boolean) : false;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setAutoPlay(autoPlay);
+    result.success(null);
+  }
+
+  // === 播放源设置方法 ===
+
+  private setUrl(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const url = this.extractArg(args) as string;
+    
+    console.info('[FlutterAliplayer] setUrl playerId=' + playerId + ' url=' + url);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setUrl playerId=%{public}s url=%{public}s', playerId, url);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    // 使用 getPlayerInstance 代替 getPlayer，支持所有类型的播放器
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setUrl(url);
+    result.success(null);
+  }
+
+  private setDataSource(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const url = arg !== null && arg !== undefined ? (arg.get('url') as Object) as string : '';
+    const timeLineUrl = arg !== null && arg !== undefined ? (arg.get('timeLineUrl') as Object) as string : '';
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setDataSource playerId=%{public}s url=%{public}s timeLineUrl=%{public}s', playerId, url, timeLineUrl);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    const liveShiftPlayer = player as AliLiveShiftPlayerInstance;
+    liveShiftPlayer.setLiveShiftDataSource(url, timeLineUrl);
+    result.success(null);
+  }
+
+  private setVidSts(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const vid = arg !== null && arg !== undefined ? (arg.get('vid') as Object) as string : '';
+    const accessKeyId = arg !== null && arg !== undefined ? (arg.get('accessKeyId') as Object) as string : '';
+    const accessKeySecret = arg !== null && arg !== undefined ? (arg.get('accessKeySecret') as Object) as string : '';
+    const securityToken = arg !== null && arg !== undefined ? (arg.get('securityToken') as Object) as string : '';
+    const region = arg !== null && arg !== undefined ? (arg.get('region') as Object) as string : '';
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayer(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setVidSts(vid, accessKeyId, accessKeySecret, securityToken, region);
+    result.success(null);
+  }
+
+  private setVidAuth(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const vid = arg !== null && arg !== undefined ? (arg.get('vid') as Object) as string : '';
+    const playAuth = arg !== null && arg !== undefined ? (arg.get('playAuth') as Object) as string : '';
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayer(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setVidAuth(vid, playAuth);
+    result.success(null);
+  }
+
+  private setVidMps(args: Map<string, Object> | null, result: MethodResult): void {
+    result.notImplemented();
+  }
+
+  private setLiveSts(args: Map<string, Object> | null, result: MethodResult): void {
+    result.notImplemented();
+  }
+
+  // === 音量控制方法 ===
+
+  private setVolume(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const volume = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as number) : 1.0;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setVolume(volume);
+    result.success(null);
+  }
+
+  private getVolume(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    result.success(player.getVolume());
+  }
+
+  private setMuted(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const muted = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as boolean) : false;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setMuted(muted);
+    result.success(null);
+  }
+
+  private isMuted(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    result.success(player.isMuted());
+  }
+
+  // === 视频信息获取方法 ===
+
+  private getVideoWidth(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    result.success(player.getVideoWidth());
+  }
+
+  private getVideoHeight(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    result.success(player.getVideoHeight());
+  }
+
+  private getDuration(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    result.success(player.getDuration());
+  }
+
+  private getCurrentPosition(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    result.success(player.getCurrentPosition());
+  }
+
+  private getMediaInfo(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'getMediaInfo playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'getMediaInfo: NO_MANAGER');
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'getMediaInfo: PLAYER_NOT_FOUND %{public}s', playerId);
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    const info = player.getMediaInfo();
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'getMediaInfo result: duration=%{public}d', info.get('duration') as number);
+    result.success(info);
+  }
+
+  // === 视频渲染方法 ===
+
+  private setPlayerView(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const viewId = this.extractArg(args) as number;
+    
+    console.info('[FlutterAliplayer] setPlayerView playerId=' + playerId + ' viewId=' + viewId);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setPlayerView playerId=%{public}s viewId=%{public}d', playerId, viewId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    this.instanceManager.bindPlayerView(playerId, viewId);
+    result.success(null);
+  }
+
+  private setScalingMode(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const mode = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as number) : 0;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setScalingMode(mode);
+    result.success(null);
+  }
+
+  private setRotateMode(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const mode = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as number) : 0;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setRotateMode(mode);
+    result.success(null);
+  }
+
+  private setMirrorMode(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const mode = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as number) : 0;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setMirrorMode(mode);
+    result.success(null);
+  }
+
+  private getAlphaRenderMode(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    result.success(player.getAlphaRenderMode());
+  }
+
+  private setAlphaRenderMode(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    const argValue = this.extractArg(args);
+    const mode = argValue !== null && argValue !== undefined ? argValue as number : 0;
+    player.setAlphaRenderMode(mode);
+    result.success(null);
+  }
+
+  private setVideoBackgroundColor(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    const color = this.extractArg(args) as number;
+
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setVideoBackgroundColor playerId=%{public}s color=0x%{public}x', playerId, color);
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    player.setBackgroundColor(color);
+    result.success(null);
+  }
+
+  // === 清晰度切换方法 ===
+
+  private selectTrack(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const trackIndex = arg !== null && arg !== undefined
+      ? ((arg.get('trackIdx') ?? arg.get('trackIndex')) as number)
+      : -1;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.selectTrack(trackIndex);
+    result.success(null);
+  }
+
+  private switchStream(args: Map<string, Object> | null, result: MethodResult): void {
+    result.notImplemented();
+  }
+
+  private setDefaultBandWidth(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const bandWidth = (this.extractArg(args) as Object) as number;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setDefaultBandWidth(bandWidth);
+    result.success(null);
+  }
+
+  private setDefaultResolution(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const resolution = (this.extractArg(args) as Object) as number;
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setDefaultResolution(resolution);
+    result.success(null);
+  }
+
+  // === 全局设置方法 ===
+
+  private setLogLevel(args: Object | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+
+    const level = args as number;
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setLogLevel level=%{public}d', level);
+    
+    if (this.globalSettingsPlugin !== null) {
+      this.globalSettingsPlugin.setLogLevel(level);
+    }
+    result.success(null);
+  }
+
+  private enableConsoleLog(args: Object | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+
+    const enable = args as boolean;
+    
+    if (this.globalSettingsPlugin !== null) {
+      this.globalSettingsPlugin.enableConsoleLog(enable);
+    }
+    result.success(null);
+  }
+
+  private netWorkReConnect(result: MethodResult): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'netWorkReConnect');
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    this.instanceManager.reloadAll();
+    result.success(null);
+  }
+
+  // === RTS/ARTC SDK 加载 ===
+
+  private loadRtsLibrary(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const isAliPlayerSDK = (args.get('isAliPlayerSDK') as Object) as boolean;
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'loadRtsLibrary isAliPlayerSDK=%{public}s', String(isAliPlayerSDK));
+    
+    // TODO: 需要手动集成 artclibrary + RtsSDK HAR 包
+    result.success(null);
+  }
+
+  // === 其他功能 ===
+
+  private snapshot(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const path = this.extractArg(args) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'snapshot playerId=%{public}s path=%{public}s', playerId, path);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.snapShot(path);
+    result.success(null);
+  }
+
+  private addExtSubtitle(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const url = (this.extractArg(args) as Object) as string;
+    
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'addExtSubtitle playerId=%{public}s url=%{public}s', playerId, url);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.addExtSubtitle(url);
+    result.success(null);
+  }
+
+  private selectExtSubtitle(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const trackIndex = arg.get('trackIndex') as number;
+    const enable = arg.get('enable') as boolean;
+    
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'selectExtSubtitle playerId=%{public}s trackIndex=%{public}d enable=%{public}s', 
+      playerId, trackIndex, String(enable));
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.selectExtSubtitle(trackIndex, enable);
+    result.success(null);
+  }
+  
+  // === 鉴权过期监听 ===
+  
+  private setOnURLSourceExpiredListener(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const enable = (args.get('arg') as Object) as boolean;
+    
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setOnURLSourceExpiredListener playerId=%{public}s enable=%{public}s', 
+      playerId, String(enable));
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setOnURLSourceExpiredListener(enable);
+    result.success(null);
+  }
+  
+  private setOnVidAuthExpiredListener(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const enable = (args.get('arg') as Object) as boolean;
+    
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setOnVidAuthExpiredListener playerId=%{public}s enable=%{public}s', 
+      playerId, String(enable));
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setOnVidAuthExpiredListener(enable);
+    result.success(null);
+  }
+
+  // === 缩略图方法 ===
+
+  private createThumbnailHelper(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const thumbnail = (this.extractArg(args) as Object) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'createThumbnailHelper playerId=%{public}s thumbnail=%{public}s', playerId, thumbnail);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.createThumbnailHelper(thumbnail);
+    result.success(null);
+  }
+
+  private requestBitmapAtPosition(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const position = (this.extractArg(args) as Object) as number;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'requestBitmapAtPosition playerId=%{public}s position=%{public}d', playerId, position);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.requestBitmapAtPosition(position);
+    result.success(null);
+  }
+
+  // === 列表播放器方法 ===
+
+  private addUrlSource(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const url = arg !== null && arg !== undefined ? (arg.get('url') as Object) as string : '';
+    const uid = arg !== null && arg !== undefined ? (arg.get('uid') as Object) as string : '';
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'addUrlSource playerId=%{public}s url=%{public}s uid=%{public}s', playerId, url, uid);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const listPlayer = this.instanceManager.getListPlayer(playerId);
+    if (listPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'List player not found: ' + playerId, null);
+      return;
+    }
+    
+    listPlayer.addUrl(url, uid);
+    result.success(null);
+  }
+
+  private moveTo(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const uid = this.extractArg(args) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'moveTo playerId=%{public}s uid=%{public}s', playerId, uid);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const listPlayer = this.instanceManager.getListPlayer(playerId);
+    if (listPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'List player not found: ' + playerId, null);
+      return;
+    }
+    
+    const success = listPlayer.moveTo(uid);
+    result.success(success);
+  }
+
+  private moveToNext(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'moveToNext playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const listPlayer = this.instanceManager.getListPlayer(playerId);
+    if (listPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'List player not found: ' + playerId, null);
+      return;
+    }
+    
+    const success = listPlayer.moveToNext();
+    result.success(success);
+  }
+
+  private moveToPre(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'moveToPre playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const listPlayer = this.instanceManager.getListPlayer(playerId);
+    if (listPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'List player not found: ' + playerId, null);
+      return;
+    }
+    
+    const success = listPlayer.moveToPrev();
+    result.success(success);
+  }
+
+  private getCurrentUid(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const listPlayer = this.instanceManager.getListPlayer(playerId);
+    if (listPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'List player not found: ' + playerId, null);
+      return;
+    }
+    
+    const uid = listPlayer.getCurrentUid();
+    result.success(uid);
+  }
+
+  private clearPlaylist(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'clearPlaylist playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const listPlayer = this.instanceManager.getListPlayer(playerId);
+    if (listPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'List player not found: ' + playerId, null);
+      return;
+    }
+    
+    listPlayer.clear();
+    result.success(null);
+  }
+
+  private removeSource(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const uid = this.extractArg(args) as string;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'removeSource playerId=%{public}s uid=%{public}s', playerId, uid);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const listPlayer = this.instanceManager.getListPlayer(playerId);
+    if (listPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'List player not found: ' + playerId, null);
+      return;
+    }
+    
+    listPlayer.removeSource(uid);
+    result.success(null);
+  }
+
+  // === 直播时移播放器方法 ===
+
+  private setLiveShiftDataSource(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const arg = this.extractArg(args) as Map<string, Object>;
+    const url = arg !== null && arg !== undefined ? (arg.get('url') as Object) as string : '';
+    const timeLineUrl = arg !== null && arg !== undefined ? (arg.get('timeLineUrl') as Object) as string : '';
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setLiveShiftDataSource playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const liveShiftPlayer = this.instanceManager.getLiveShiftPlayer(playerId);
+    if (liveShiftPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'Live shift player not found: ' + playerId, null);
+      return;
+    }
+    
+    liveShiftPlayer.setLiveShiftDataSource(url, timeLineUrl);
+    result.success(null);
+  }
+
+  private seekToLiveTime(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const liveTime = this.extractArg(args) as number;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'seekToLiveTime playerId=%{public}s liveTime=%{public}d', playerId, liveTime);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const liveShiftPlayer = this.instanceManager.getLiveShiftPlayer(playerId);
+    if (liveShiftPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'Live shift player not found: ' + playerId, null);
+      return;
+    }
+    
+    liveShiftPlayer.seekToLiveTime(liveTime);
+    result.success(null);
+  }
+
+  private getCurrentLiveTime(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const liveShiftPlayer = this.instanceManager.getLiveShiftPlayer(playerId);
+    if (liveShiftPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'Live shift player not found: ' + playerId, null);
+      return;
+    }
+    
+    const liveTime = liveShiftPlayer.getCurrentLiveTime();
+    result.success(liveTime);
+  }
+
+  private getCurrentTime(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const liveShiftPlayer = this.instanceManager.getLiveShiftPlayer(playerId);
+    if (liveShiftPlayer === null) {
+      result.error('PLAYER_NOT_FOUND', 'Live shift player not found: ' + playerId, null);
+      return;
+    }
+    
+    const currentTime = liveShiftPlayer.getCurrentTime();
+    result.success(currentTime);
+  }
+
+  // === 辅助方法 ===
+
+  private extractPlayerId(args: Map<string, Object> | null): string {
+    if (args === null || args === undefined) {
+      return 'default';
+    }
+    const id = args.get('playerId');
+    if (id === null || id === undefined) {
+      return 'default';
+    }
+    return (id as Object) as string;
+  }
+  
+  private extractArg(args: Map<string, Object> | null): Object {
+    if (args === null || args === undefined) {
+      return '';
+    }
+    const argValue = args.get('arg');
+    if (argValue === null || argValue === undefined) {
+      return '';
+    }
+    return argValue as Object;
+  }
+
+  // === 播放器配置方法 ===
+
+  private setPlayerConfig(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+    
+    const playerId = this.extractPlayerId(args);
+    const configMap = this.extractArg(args) as Map<string, Object>;
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setPlayerConfig playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    player.setConfig(configMap);
+    result.success(null);
+  }
+
+  private getPlayerConfig(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'getPlayerConfig playerId=%{public}s', playerId);
+    
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+    
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+    
+    const config = player.getConfig();
+    result.success(config);
   }
 }

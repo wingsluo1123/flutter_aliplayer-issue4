@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "flutter_aliplayer_example"
+    },
+    {
+      "name": "perm_write_imagevideo_reason",
+      "value": "Used to save video screenshots to album"
     }
   ]
 }
