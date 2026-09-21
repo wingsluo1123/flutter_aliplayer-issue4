@@ -75,8 +75,8 @@ struct AliPlayerPlatformViewInstance {
   build() {
     if (this.platformView !== null) {
       XComponent({
-        id: this.platformView.getViewData().viewId.toString(),
-        type: XComponentType.SURFACE,
+        id: 'flutter_aliplayer_render_' + this.platformView.getViewData().viewId.toString(),
+        type: XComponentType.TEXTURE,
         libraryname: 'premierlibrary',
         controller: this.controller
       })
@@ -96,11 +96,13 @@ struct AliPlayerPlatformViewInstance {
       return;
     }
     const data = this.platformView.getViewData();
-    const surfaceId: string = data.viewId.toString();
-    hilog.info(LOG_DOMAIN, LOG_TAG, 'XComponent onLoad, viewId=%{public}d surfaceId=%{public}s', data.viewId, surfaceId);
-    
+    // 官方 setSurfaceId 接收 XComponent id，而不是 controller 返回的数字 surfaceId。
+    const xComponentId: string = 'flutter_aliplayer_render_' + data.viewId.toString();
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'XComponent onLoad, viewId=%{public}d xComponentId=%{public}s',
+      data.viewId, xComponentId);
+
     if (data.surfaceCallback !== null && data.viewId >= 0) {
-      data.surfaceCallback.onSurfaceReady(data.viewId, surfaceId);
+      data.surfaceCallback.onSurfaceReady(data.viewId, xComponentId);
     }
     data.xComponentController = this.controller;
   }
