@@ -220,6 +220,9 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
       case 'destroy':
         this.destroyPlayer(args, result);
         break;
+      case 'releaseAsync':
+        this.releaseAsyncPlayer(args, result);
+        break;
         
       case 'prepare':
         this.preparePlayer(args, result);
@@ -239,6 +242,12 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
       case 'seekTo':
         this.seekToPlayer(args, result);
         break;
+      case 'setStartTime':
+        this.setStartTime(args, result);
+        break;
+      case 'setMaxAccurateSeekDelta':
+        this.setMaxAccurateSeekDelta(args, result);
+        break;
       case 'setSpeed':
         this.setSpeed(args, result);
         break;
@@ -247,6 +256,12 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
         break;
       case 'setAutoPlay':
         this.setAutoPlay(args, result);
+        break;
+      case 'setFastStart':
+        this.setFastStart(args, result);
+        break;
+      case 'setEnableHardwareDecoder':
+        this.setEnableHardwareDecoder(args, result);
         break;
         
       // === 播放源设置 ===
@@ -306,6 +321,9 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
         break;
       case 'setScalingMode':
         this.setScalingMode(args, result);
+        break;
+      case 'getScalingMode':
+        this.getScalingMode(args, result);
         break;
       case 'setRotateMode':
         this.setRotateMode(args, result);
@@ -385,6 +403,9 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
         break;
       case 'getConfig':
         this.getPlayerConfig(args, result);
+        break;
+      case 'getPlayConfig':
+        this.getPlayConfig(args, result);
         break;
         
       // === 缩略图功能 ===
@@ -546,6 +567,27 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
     }
   }
 
+  /**
+   * 异步释放播放器。释放后该实例不能再用于起播，所以和 destroy 一样从管理器中摘掉。
+   */
+  private releaseAsyncPlayer(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'releaseAsyncPlayer playerId=%{public}s', playerId);
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    try {
+      this.instanceManager.destroyPlayerAsync(playerId);
+      result.success(null);
+    } catch (err) {
+      const error = err as Error;
+      result.error('RELEASE_ASYNC_FAILED', error.message, null);
+    }
+  }
+
   // === 播放控制方法 ===
 
   private preparePlayer(args: Map<string, Object> | null, result: MethodResult): void {
@@ -665,6 +707,112 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
     }
     
     player.seekTo(position);
+    result.success(null);
+  }
+
+  private setStartTime(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+
+    const playerId = this.extractPlayerId(args);
+    const argMap = this.extractArg(args) as Map<string, Object>;
+    const timeValue = argMap.get('time');
+    const seekModeValue = argMap.get('seekMode');
+    const time = timeValue !== null && timeValue !== undefined ? (timeValue as number) : 0;
+    const seekMode = seekModeValue !== null && seekModeValue !== undefined ? (seekModeValue as number) : 1;
+
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'setStartTime playerId=%{public}s time=%{public}d mode=%{public}d',
+      playerId, time, seekMode);
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    player.setStartTime(time, seekMode);
+    result.success(null);
+  }
+
+  private setMaxAccurateSeekDelta(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const delta = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as number) : 0;
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    player.setMaxAccurateSeekDelta(delta);
+    result.success(null);
+  }
+
+  private setFastStart(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const enable = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as boolean) : false;
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    player.setFastStart(enable);
+    result.success(null);
+  }
+
+  private setEnableHardwareDecoder(args: Map<string, Object> | null, result: MethodResult): void {
+    if (args === null) {
+      result.error('INVALID_ARGS', 'Arguments required', null);
+      return;
+    }
+
+    const playerId = this.extractPlayerId(args);
+    const argValue = this.extractArg(args);
+    const enable = argValue !== null && argValue !== undefined && argValue !== '' ? (argValue as boolean) : false;
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    player.setEnableHardwareDecoder(enable);
     result.success(null);
   }
 
@@ -1091,6 +1239,23 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
     
     player.setScalingMode(mode);
     result.success(null);
+  }
+
+  private getScalingMode(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    result.success(player.getScalingMode());
   }
 
   private setRotateMode(args: Map<string, Object> | null, result: MethodResult): void {
@@ -1851,5 +2016,28 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
     
     const config = player.getConfig();
     result.success(config);
+  }
+
+  /**
+   * getConfig 返回 PlayerConfig 的原始字段名（m 前缀），
+   * getPlayConfig 返回 Dart AVPConfig 的字段名（驼峰），两者不能互相替代。
+   */
+  private getPlayConfig(args: Map<string, Object> | null, result: MethodResult): void {
+    const playerId = this.extractPlayerId(args);
+
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'getPlayConfig playerId=%{public}s', playerId);
+
+    if (this.instanceManager === null) {
+      result.error('NO_MANAGER', 'Instance manager not initialized', null);
+      return;
+    }
+
+    const player = this.instanceManager.getPlayerInstance(playerId);
+    if (player === null) {
+      result.error('PLAYER_NOT_FOUND', 'Player not found: ' + playerId, null);
+      return;
+    }
+
+    result.success(player.getPlayConfig());
   }
 }

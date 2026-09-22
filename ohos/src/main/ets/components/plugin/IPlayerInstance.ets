@@ -13,14 +13,19 @@ export interface IPlayerInstance {
   pause(): void;
   stop(): void;
   seekTo(positionMs: number): void;
+  setStartTime(position: number, seekMode: number): void;
+  setMaxAccurateSeekDelta(delta: number): void;
   setSpeed(speed: number): void;
   setLoop(loop: boolean): void;
   setAutoPlay(autoPlay: boolean): void;
+  setFastStart(enable: boolean): void;
+  setEnableHardwareDecoder(enable: boolean): void;
   setVolume(volume: number): void;
   getVolume(): number;
   setMuted(muted: boolean): void;
   isMuted(): boolean;
   setScalingMode(mode: number): void;
+  getScalingMode(): number;
   setRotateMode(mode: number): void;
   setMirrorMode(mode: number): void;
   getAlphaRenderMode(): number;
@@ -44,5 +49,7 @@ export interface IPlayerInstance {
   reload(): void;
   setConfig(config: Map<string, Object>): void;
   getConfig(): Map<string, Object>;
+  getPlayConfig(): Map<string, Object>;
   release(): void;
+  releaseAsync(): void;
 }

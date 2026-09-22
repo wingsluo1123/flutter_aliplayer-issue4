@@ -70,6 +70,11 @@ class _MyAppState extends State<MyApp> {
   // 并沿用旧源 —— 必须等状态回调里的 idle 再换源。
   Completer<void>? _stopCompleter;
 
+  // 换源后由 onPrepared 回调触发自动起播: prepare() 是异步的,
+  // 直接在 prepare() 之后 play() 会因为尚未 prepared 而无效, 故用标志位
+  // 在 prepared 完成时再 play。
+  bool _autoPlayAfterPrepare = false;
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +105,11 @@ class _MyAppState extends State<MyApp> {
           _duration = (d as num?)?.toInt() ?? 0;
         });
       });
+      // 换源后自动起播: 否则画面停在首帧, 表现为"点了源按钮没反应"。
+      if (_autoPlayAfterPrepare) {
+        _autoPlayAfterPrepare = false;
+        _play();
+      }
     });
     _player!.setOnError(
         (int errorCode, String? errorExtra, String? errorMsg, String playerId) {
@@ -156,6 +166,14 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _play() async {
+    // stop() 之后播放器回到 stopped 态, 已不再 prepared, 直接 play() 无效;
+    // 需重新 setUrl+prepare, 再由 onPrepared 回调自动起播。
+    if (!_isPrepared) {
+      _autoPlayAfterPrepare = true;
+      await _player!.setUrl(_testUrl);
+      await _player!.prepare();
+      return;
+    }
     await _player!.play();
     setState(() {
       _isPlaying = true;
@@ -175,6 +193,7 @@ class _MyAppState extends State<MyApp> {
     await _player!.stop();
     setState(() {
       _isPlaying = false;
+      _isPrepared = false;
       _statusText = 'stopped';
       _currentPosition = 0;
     });
@@ -279,6 +298,15 @@ class _MyAppState extends State<MyApp> {
   /// 同实例换源 (验证 issue #4 阻塞点 #2: 旧实现会静默失败沿用旧源)。
   Future<void> _switchToUrl(String target, String statusText) async {
     if (target == _testUrl) {
+      // 已是当前源: 不重新 prepare, 但若停在首帧(prepared 未播放)则直接起播,
+      // 避免"默认源就是它、首次点击却没反应"。
+      if (_isPrepared && !_isPlaying) {
+        await _play();
+      } else if (!mounted) {
+        return;
+      } else {
+        setState(() => _statusText = '已是当前源');
+      }
       return;
     }
     try {
@@ -299,6 +327,8 @@ class _MyAppState extends State<MyApp> {
         _errorMsg = '';
       });
       await _player!.setUrl(target);
+      // 换源后希望自动接着播放, 而不是停在 prepared 首帧。
+      _autoPlayAfterPrepare = true;
       await _player!.prepare();
     } catch (e) {
       _stopCompleter = null;
@@ -447,7 +477,7 @@ class _MyAppState extends State<MyApp> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ElevatedButton(
-                  onPressed: _isPrepared ? _play : null,
+                  onPressed: _isPlaying ? null : _play,
                   child: const Text('Play'),
                 ),
                 const SizedBox(width: 8),

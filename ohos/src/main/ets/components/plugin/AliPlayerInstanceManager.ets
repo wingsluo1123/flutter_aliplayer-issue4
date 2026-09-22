@@ -177,10 +177,22 @@ export class AliPlayerInstanceManager implements SurfaceCallback {
 
   destroyPlayer(playerId: string): void {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'destroyPlayer playerId=%{public}s', playerId);
-    
+    this.removePlayer(playerId, false);
+  }
+
+  destroyPlayerAsync(playerId: string): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'destroyPlayerAsync playerId=%{public}s', playerId);
+    this.removePlayer(playerId, true);
+  }
+
+  private removePlayer(playerId: string, useAsync: boolean): void {
     const playerInfo = this.playerInstances.get(playerId);
     if (playerInfo !== undefined) {
-      playerInfo.instance.release();
+      if (useAsync) {
+        playerInfo.instance.releaseAsync();
+      } else {
+        playerInfo.instance.release();
+      }
       this.playerInstances.delete(playerId);
       
       const viewBindingEntries = Array.from(this.viewBinding.entries());

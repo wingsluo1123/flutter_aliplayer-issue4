@@ -491,6 +491,32 @@ export class AliPlayerInstance implements IPlayerInstance {
     return 1.0;
   }
   
+  setStartTime(position: number, seekMode: number): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setStartTime: %{public}s position=%{public}d mode=%{public}d',
+      this.playerId, position, seekMode);
+    
+    if (this.player !== null) {
+      try {
+        this.player.setStartTime(position, seekMode);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set start time: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setMaxAccurateSeekDelta(delta: number): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setMaxAccurateSeekDelta: %{public}s delta=%{public}d', this.playerId, delta);
+    
+    if (this.player !== null) {
+      try {
+        this.player.setMaxAccurateSeekDelta(delta);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG,
+          'Failed to set max accurate seek delta: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
   setSpeed(speed: number): void {
     hilog.debug(LOG_DOMAIN, LOG_TAG, 'setSpeed: %{public}s speed=%{public}f', this.playerId, speed);
     
@@ -523,6 +549,32 @@ export class AliPlayerInstance implements IPlayerInstance {
         this.player.setAutoPlay(autoPlay);
       } catch (err) {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set autoPlay: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setFastStart(enable: boolean): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG, 'setFastStart: %{public}s enable=%{public}d', this.playerId, enable ? 1 : 0);
+    
+    if (this.player !== null) {
+      try {
+        this.player.setFastStart(enable);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set fast start: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setEnableHardwareDecoder(enable: boolean): void {
+    hilog.debug(LOG_DOMAIN, LOG_TAG,
+      'setEnableHardwareDecoder: %{public}s enable=%{public}d', this.playerId, enable ? 1 : 0);
+    
+    if (this.player !== null) {
+      try {
+        this.player.enableHardwareDecoder(enable);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG,
+          'Failed to set hardware decoder: %{public}s', (err as Error).message);
       }
     }
   }
@@ -560,6 +612,17 @@ export class AliPlayerInstance implements IPlayerInstance {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set scaling mode: %{public}s', (err as Error).message);
       }
     }
+  }
+  
+  getScalingMode(): number {
+    if (this.player !== null) {
+      try {
+        return this.player.getScaleMode() as number;
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to get scaling mode: %{public}s', (err as Error).message);
+      }
+    }
+    return ScaleMode.SCALE_ASPECT_FIT as number;
   }
   
   setRotateMode(mode: number): void {
@@ -936,6 +999,62 @@ export class AliPlayerInstance implements IPlayerInstance {
     return config;
   }
   
+  /**
+   * 返回 Dart 侧 AVPConfig 结构的配置（驼峰 key）。
+   * 
+   * getConfig() 沿用 Android 的 PlayerConfig 字段名（m 前缀），
+   * 而 Dart 的 AVPConfig.convertAt() 读的是 iOS AVPConfig 的属性名，
+   * 两者 key 不同，所以这里单独按 AVPConfig 的字段名输出一份。
+   */
+  getPlayConfig(): Map<string, Object> {
+    const config = new Map<string, Object>();
+    
+    if (this.player === null) {
+      return config;
+    }
+    
+    try {
+      const playerConfig = this.player.getConfig();
+      if (playerConfig !== undefined && playerConfig !== null) {
+        config.set('maxBufferDuration', playerConfig.mMaxBufferDuration);
+        config.set('highBufferDuration', playerConfig.mHighBufferDuration);
+        config.set('startBufferDuration', playerConfig.mStartBufferDuration);
+        config.set('networkTimeout', playerConfig.mNetworkTimeout);
+        config.set('networkRetryCount', playerConfig.mNetworkRetryCount);
+        config.set('maxDelayTime', playerConfig.mMaxDelayTime);
+        config.set('maxProbeSize', playerConfig.mMaxProbeSize);
+        config.set('httpProxy', playerConfig.mHttpProxy);
+        config.set('referer', playerConfig.mReferrer);
+        config.set('userAgent', playerConfig.mUserAgent);
+        config.set('clearShowWhenStop', playerConfig.mClearFrameWhenStop);
+        config.set('enableSEI', playerConfig.mEnableSEI);
+        config.set('enableLocalCache', playerConfig.mEnableLocalCache);
+        config.set('liveStartIndex', playerConfig.mLiveStartIndex);
+        config.set('disableAudio', playerConfig.mDisableAudio);
+        config.set('disableVideo', playerConfig.mDisableVideo);
+        config.set('positionTimerIntervalMs', playerConfig.mPositionTimerIntervalMs);
+        config.set('mMAXBackwardDuration', playerConfig.mMaxBackwardBufferDurationMs);
+        config.set('preferAudio', playerConfig.mPreferAudio);
+        config.set('enableHttpDns', playerConfig.mEnableHttpDns);
+        config.set('enableHttp3', playerConfig.mEnableHttp3);
+        config.set('enableStrictFlvHeader', playerConfig.mEnableStrictFlvHeader);
+        config.set('enableStrictAuthMode', playerConfig.mEnableStrictAuthMode);
+        config.set('enableProjection', playerConfig.mEnableProjection);
+        config.set('mSelectTrackBufferMode', playerConfig.mSelectTrackBufferMode);
+        config.set('mMaxAllowedAbrVideoPixelNumber', playerConfig.mMaxAllowedAbrVideoPixelNumber);
+        
+        const headers = playerConfig.getCustomHeaders();
+        if (headers !== undefined && headers !== null) {
+          config.set('httpHeaders', headers);
+        }
+      }
+    } catch (err) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to get play config: %{public}s', (err as Error).message);
+    }
+    
+    return config;
+  }
+  
   private applyConfigToPlayerConfig(map: Map<string, Object>, config: PlayerConfig): void {
     if (map.has('mMaxBufferDuration')) {
       config.mMaxBufferDuration = map.get('mMaxBufferDuration') as number;
@@ -1099,6 +1218,23 @@ export class AliPlayerInstance implements IPlayerInstance {
         this.player.release();
       } catch (err) {
         hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to release player: %{public}s', (err as Error).message);
+      }
+      this.player = null;
+    }
+    
+    this.eventSink = null;
+    this.isPrepared = false;
+    this.isSurfaceReady = false;
+  }
+  
+  releaseAsync(): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'releaseAsync: %{public}s', this.playerId);
+    
+    if (this.player !== null) {
+      try {
+        this.player.releaseAsync();
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to release player async: %{public}s', (err as Error).message);
       }
       this.player = null;
     }
