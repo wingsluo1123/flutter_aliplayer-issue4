@@ -288,6 +288,58 @@ export class AliLiveShiftPlayerInstance implements IPlayerInstance {
     }
   }
   
+  setStartTime(position: number, seekMode: number): void {
+    if (this.player !== null) {
+      try {
+        this.player.setStartTime(position, seekMode);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set start time: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setMaxAccurateSeekDelta(delta: number): void {
+    if (this.player !== null) {
+      try {
+        this.player.setMaxAccurateSeekDelta(delta);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG,
+          'Failed to set max accurate seek delta: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setFastStart(enable: boolean): void {
+    if (this.player !== null) {
+      try {
+        this.player.setFastStart(enable);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set fast start: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  setEnableHardwareDecoder(enable: boolean): void {
+    if (this.player !== null) {
+      try {
+        this.player.enableHardwareDecoder(enable);
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to set hardware decoder: %{public}s', (err as Error).message);
+      }
+    }
+  }
+  
+  getScalingMode(): number {
+    if (this.player !== null) {
+      try {
+        return this.player.getScaleMode() as number;
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to get scaling mode: %{public}s', (err as Error).message);
+      }
+    }
+    return ScaleMode.SCALE_ASPECT_FIT as number;
+  }
+  
   setRotateMode(mode: number): void {
     if (this.player !== null) {
       this.player.setRotateMode(this.toRotateMode(mode));
@@ -458,6 +510,35 @@ export class AliLiveShiftPlayerInstance implements IPlayerInstance {
     return config;
   }
   
+  /**
+   * 返回 Dart 侧 AVPConfig 结构的配置（驼峰 key），与 getConfig() 的 m 前缀 key 区分。
+   */
+  getPlayConfig(): Map<string, Object> {
+    const config = new Map<string, Object>();
+    
+    if (this.player === null) {
+      return config;
+    }
+    
+    try {
+      const playerConfig = this.player.getConfig();
+      if (playerConfig !== undefined && playerConfig !== null) {
+        config.set('maxBufferDuration', playerConfig.mMaxBufferDuration);
+        config.set('highBufferDuration', playerConfig.mHighBufferDuration);
+        config.set('startBufferDuration', playerConfig.mStartBufferDuration);
+        config.set('networkTimeout', playerConfig.mNetworkTimeout);
+        config.set('networkRetryCount', playerConfig.mNetworkRetryCount);
+        config.set('httpProxy', playerConfig.mHttpProxy);
+        config.set('referer', playerConfig.mReferrer);
+        config.set('userAgent', playerConfig.mUserAgent);
+      }
+    } catch (err) {
+      hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to get play config: %{public}s', (err as Error).message);
+    }
+    
+    return config;
+  }
+  
   private applyConfigToPlayerConfig(map: Map<string, Object>, config: PlayerConfig): void {
     if (map.has('mMaxBufferDuration') || map.has('maxBufferDuration')) {
       const val = map.get('mMaxBufferDuration') ?? map.get('maxBufferDuration');
@@ -547,6 +628,21 @@ export class AliLiveShiftPlayerInstance implements IPlayerInstance {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'release: %{public}s', this.playerId);
     if (this.player !== null) {
       this.player.release();
+      this.player = null;
+    }
+    this.eventSink = null;
+    this.isPrepared = false;
+    this.isSurfaceReady = false;
+  }
+  
+  releaseAsync(): void {
+    hilog.info(LOG_DOMAIN, LOG_TAG, 'releaseAsync: %{public}s', this.playerId);
+    if (this.player !== null) {
+      try {
+        this.player.releaseAsync();
+      } catch (err) {
+        hilog.error(LOG_DOMAIN, LOG_TAG, 'Failed to release player async: %{public}s', (err as Error).message);
+      }
       this.player = null;
     }
     this.eventSink = null;
