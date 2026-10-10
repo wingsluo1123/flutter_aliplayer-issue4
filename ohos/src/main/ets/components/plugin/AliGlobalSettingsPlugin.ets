@@ -156,7 +156,7 @@ export class AliGlobalSettingsPlugin implements MethodCallHandler {
     }
     
     const enable = (args.get('enable') as Object) as boolean;
-    const maxBufferMemoryKB = (args.get('maxBufferMemoryKB') as Object) as number;
+    const maxBufferMemoryKB = this.toNumber(args.get('maxBufferMemoryKB'));
     const localCacheDir = (args.get('localCacheDir') as Object) as string;
     
     hilog.info(LOG_DOMAIN, LOG_TAG, 'enableLocalCache: enable=%{public}s maxBufferMemoryKB=%{public}d dir=%{public}s',
@@ -172,9 +172,9 @@ export class AliGlobalSettingsPlugin implements MethodCallHandler {
       return;
     }
     
-    const expireMin = (args.get('expireMin') as Object) as number;
-    const maxCapacityMB = (args.get('maxCapacityMB') as Object) as number;
-    const freeStorageMB = (args.get('freeStorageMB') as Object) as number;
+    const expireMin = this.toNumber(args.get('expireMin'));
+    const maxCapacityMB = this.toNumber(args.get('maxCapacityMB'));
+    const freeStorageMB = this.toNumber(args.get('freeStorageMB'));
     
     hilog.info(LOG_DOMAIN, LOG_TAG, 'setCacheFileClearConfig: expireMin=%{public}d maxCapacityMB=%{public}d freeStorageMB=%{public}d',
       expireMin, maxCapacityMB, freeStorageMB);
@@ -236,6 +236,18 @@ export class AliGlobalSettingsPlugin implements MethodCallHandler {
     hilog.info(LOG_DOMAIN, LOG_TAG, 'enableAudioLowLatencyMode: %{public}s', String(enable));
     AliPlayerGlobalSettings.enableAudioLowLatencyMode(enable);
     result.success(null);
+  }
+
+  // Dart 侧将数值按字符串下发 (与 Android 对齐), ArkTS 的 as 不做运行时转换,
+  // 这里统一兼容 string / number, 避免把字符串原样传给 SDK (issue #5)。
+  private toNumber(value: Object | undefined): number {
+    if (typeof value === 'number') {
+      return value as number;
+    }
+    if (typeof value === 'string') {
+      return Number.parseInt(value as string, 10);
+    }
+    return 0;
   }
 
   release(): void {

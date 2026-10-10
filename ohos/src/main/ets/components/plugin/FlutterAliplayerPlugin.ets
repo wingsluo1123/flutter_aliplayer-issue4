@@ -368,6 +368,23 @@ export default class FlutterAliplayerPlugin implements FlutterPlugin, MethodCall
       case 'netWorkReConnect':
         this.netWorkReConnect(result);
         break;
+
+      // === 全局缓存 / 网络设置: Dart 经 factory channel 下发, 原生实现在 AliGlobalSettingsPlugin;
+      //     factory 持有其实例, 转发过去 (issue #5: 缺少转发导致 MissingPluginException)。
+      //     setUseHttp2 与前 6 个同源 (issue 未列出但同款缺陷), 一并转发。 ===
+      case 'enableLocalCache':
+      case 'setCacheFileClearConfig':
+      case 'clearCaches':
+      case 'enableHttpDns':
+      case 'setDNSResolve':
+      case 'enableNetworkBalance':
+      case 'setUseHttp2':
+        if (this.globalSettingsPlugin !== null) {
+          this.globalSettingsPlugin.onMethodCall(call, result);
+        } else {
+          result.error('GLOBAL_SETTINGS_UNAVAILABLE', 'AliGlobalSettingsPlugin not initialized', null);
+        }
+        break;
         
       // === Android 专属功能（OHOS 不支持） ===
       case 'showFloatViewForAndroid':
